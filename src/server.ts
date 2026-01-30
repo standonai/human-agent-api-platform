@@ -15,6 +15,7 @@ import {
   asyncHandler,
   ApiError,
   VersionConfig,
+  rateLimit,
 } from './middleware/index.js';
 import { ErrorCode } from './types/errors.js';
 import converterRoutes from './api/converter-routes.js';
@@ -51,6 +52,18 @@ const versionConfig: VersionConfig = {
 
 app.use(versioningMiddleware(versionConfig));
 app.use(agentTrackingMiddleware);
+
+// Rate limiting with agent-aware defaults (100 human / 500 agent requests per minute)
+// Optional: customize for premium agents
+app.use(
+  rateLimit({
+    customLimits: new Map([
+      ['premium-agent', 2000],  // Premium tier
+      ['internal-tool', 5000],  // Internal services
+    ]),
+  })
+);
+
 app.use(dryRunMiddleware);
 
 // Serve static files (web UI)

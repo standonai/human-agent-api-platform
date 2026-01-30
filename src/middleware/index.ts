@@ -7,3 +7,4 @@ export * from './versioning.js';
 export * from './agent-tracking.js';
 export * from './error-handler.js';
 export * from './dry-run.js';
+export * from './rate-limiter.js';

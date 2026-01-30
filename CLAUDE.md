@@ -6,6 +6,59 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository implements an API platform designed as a first-class experience for both human developers and AI agents. The core philosophy is that APIs should be machine-readable, self-documenting, and enable autonomous agent workflows while maintaining excellent human developer experience.
 
+## Design Principles
+
+Before implementing any feature, ask these questions to ensure we're building the right thing:
+
+1. **"How can I make this simpler?"**
+   - Every line of code is a liability. Remove everything unnecessary.
+   - The best code is no code. The second best is simple, obvious code.
+
+2. **"What's the one thing this absolutely must do perfectly?"**
+   - Identify the core requirement. Everything else is negotiable.
+   - Perfect execution of the essential beats good execution of everything.
+
+3. **"Where am I adding complexity that users don't value?"**
+   - Features are not benefits. Cut features users won't use or understand.
+   - Configuration options multiply complexity exponentially.
+
+4. **"What would this be like if it just worked magically?"**
+   - Zero configuration should be the default. Smart defaults everywhere.
+   - The common case should be trivial. Advanced cases merely possible.
+
+5. **"How would I make this insanely great instead of just good?"**
+   - Good is the enemy of great. Excellence in the essential matters more than completeness.
+   - Focus creates quality. Breadth creates mediocrity.
+
+6. **"What am I including because I can, not because I should?"**
+   - Technical capability doesn't justify feature existence.
+   - "We could add..." is rarely followed by something users need.
+
+7. **"How can I make the complex appear simple?"**
+   - Hide complexity, don't expose it. The internal can be sophisticated; the interface must be obvious.
+   - Abstraction should reduce cognitive load, not relocate it.
+
+8. **"Where am I compromising that I shouldn't be?"**
+   - Some things demand perfection: error messages, agent guidance, core functionality.
+   - Other things demand speed: getting to market, proving concepts, iterating.
+   - Know which is which.
+
+9. **"How can I make this feel inevitable instead of complicated?"**
+   - When users see it, they should think "obviously this is how it works."
+   - If you're explaining, you're already losing.
+
+**Application of these principles:**
+- Rate limiting: Went from 150 lines with 7 config options → 60 lines, zero-config with 2 optional overrides
+- Error responses: Every error includes actionable suggestions, not just descriptions
+- Versioning: Single header, automatic deprecation warnings, zero breaking changes
+- Agent detection: Automatic, invisible, just works
+
+These principles prioritize:
+- **Simplicity** over flexibility
+- **Clarity** over comprehensiveness
+- **Defaults** over configuration
+- **User value** over technical sophistication
+
 ## Architecture Pillars
 
 The platform is built around six core pillars that should inform all implementation decisions:
