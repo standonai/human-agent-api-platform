@@ -1,0 +1,181 @@
+openapi: 3.1.0
+info:
+  title: API Template
+  version: '2025-01-29'
+  description: |
+    Template for creating agent-friendly APIs.
+
+    This API follows the platform standards:
+    - All parameters have descriptions and examples
+    - Errors follow the standardized envelope format
+    - Supports header-based versioning
+    - Includes dry-run mode for mutations
+  contact:
+    name: API Support
+    email: api-support@example.com
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production
+  - url: https://api-staging.example.com/v1
+    description: Staging
+
+tags:
+  - name: examples
+    description: Example endpoints demonstrating platform standards
+
+paths:
+  /example:
+    get:
+      operationId: getExample
+      summary: Example endpoint
+      tags:
+        - examples
+      description: |
+        Demonstrates platform standards for agent-friendly APIs.
+
+        This endpoint shows:
+        - Rich parameter descriptions with examples
+        - Structured error responses
+        - Agent-parseable success responses
+
+      parameters:
+        - name: API-Version
+          in: header
+          description: API version in YYYY-MM-DD format
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
+            example: '2025-01-29'
+
+        - name: X-Agent-ID
+          in: header
+          description: Identifier for AI agent making the request
+          required: false
+          schema:
+            type: string
+            example: 'openai-gpt4-agent-123'
+
+        - name: limit
+          in: query
+          description: Maximum number of results to return. Must be between 1 and 100.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            example: 50
+
+      responses:
+        '200':
+          description: Successful response
+          headers:
+            X-Request-ID:
+              description: Unique request identifier for tracing
+              schema:
+                type: string
+                example: 'req_abc123'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: 'INVALID_PARAMETER'
+                  message: 'The limit parameter is out of range'
+                  target: 'limit'
+                  details:
+                    - code: 'VALUE_OUT_OF_RANGE'
+                      message: 'limit must be between 1 and 100'
+                      suggestion: 'Set limit to a value between 1 and 100, or omit it to use the default of 20'
+                  doc_url: 'https://docs.example.com/errors/INVALID_PARAMETER'
+                  request_id: 'req_abc123'
+
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ApiError'
+
+    ApiError:
+      type: object
+      required:
+        - code
+        - message
+        - request_id
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: 'INVALID_PARAMETER'
+        message:
+          type: string
+          description: Human-readable error description
+          example: 'The limit parameter is out of range'
+        target:
+          type: string
+          description: The field or parameter that caused the error
+          example: 'limit'
+        details:
+          type: array
+          description: Additional error details with suggestions
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+        doc_url:
+          type: string
+          format: uri
+          description: URL to error documentation
+          example: 'https://docs.example.com/errors/INVALID_PARAMETER'
+        request_id:
+          type: string
+          description: Unique request identifier for support
+          example: 'req_abc123'
+
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+        - suggestion
+      properties:
+        code:
+          type: string
+          description: Specific error detail code
+          example: 'VALUE_OUT_OF_RANGE'
+        message:
+          type: string
+          description: Detailed error message
+          example: 'limit must be between 1 and 100'
+        suggestion:
+          type: string
+          description: Actionable suggestion for fixing the error
+          example: 'Set limit to a value between 1 and 100'
+        target:
+          type: string
+          description: Specific field this detail relates to
+          example: 'limit'

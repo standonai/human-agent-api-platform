@@ -1,0 +1,22 @@
+extends: ["spectral:oas"]
+
+rules:
+  # Custom rules for agent-friendly APIs
+
+  # All parameters must have descriptions (P0 requirement S2)
+  parameter-description-required:
+    description: All parameters must have descriptions for LLM context
+    given: "$.paths.*[*].parameters[*]"
+    severity: error
+    then:
+      field: description
+      function: truthy
+
+  # All operations must define error responses
+  error-response-defined:
+    description: All operations must define 4xx error responses
+    given: "$.paths[*][*].responses"
+    severity: error
+    then:
+      field: "400"
+      function: truthy

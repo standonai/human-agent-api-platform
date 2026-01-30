@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenAPI to AI Agent Tools Converter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #f5f5f5;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px 20px;
+      margin-bottom: 30px;
+      border-radius: 8px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .panel {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .panel h2 {
+      margin-bottom: 15px;
+      color: #667eea;
+      font-size: 1.3rem;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 400px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      resize: vertical;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin: 15px 0;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #5568d3;
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #764ba2;
+    }
+
+    .btn-secondary:hover {
+      background: #653a8a;
+    }
+
+    select {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .output {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      max-height: 500px;
+      overflow-y: auto;
+      border: 1px solid #e9ecef;
+    }
+
+    .error {
+      background: #fee;
+      border: 1px solid #fcc;
+      color: #c33;
+      padding: 12px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+
+    .success {
+      background: #efe;
+      border: 1px solid #cfc;
+      color: #3c3;
+      padding: 12px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+
+    .info {
+      background: #e3f2fd;
+      border: 1px solid #90caf9;
+      color: #1976d2;
+      padding: 12px;
+      border-radius: 4px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+
+    .stats {
+      display: flex;
+      gap: 20px;
+      margin: 15px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 4px;
+    }
+
+    .stat {
+      flex: 1;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #e9ecef;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      color: #666;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+
+    .tab.active {
+      color: #667eea;
+      border-bottom-color: #667eea;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 1.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>OpenAPI to AI Agent Tools</h1>
+      <p class="subtitle">Convert OpenAPI 3.x specifications to OpenAI and Anthropic tool definitions</p>
+    </header>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Input: OpenAPI Specification</h2>
+        <div class="controls">
+          <button onclick="loadExample()">Load Example</button>
+          <button onclick="clearInput()" class="btn-secondary">Clear</button>
+          <button onclick="validateSpec()" class="btn-secondary">Validate</button>
+        </div>
+        <textarea id="input" placeholder='Paste your OpenAPI 3.x specification here (JSON or YAML format)...'></textarea>
+      </div>
+
+      <div class="panel">
+        <h2>Output: Tool Definitions</h2>
+        <div class="controls">
+          <select id="format">
+            <option value="both">Both Formats</option>
+            <option value="openai">OpenAI Only</option>
+            <option value="anthropic">Anthropic Only</option>
+          </select>
+          <button onclick="convert()">Convert</button>
+          <button onclick="copyOutput()" class="btn-secondary">Copy Output</button>
+          <button onclick="downloadOutput()" class="btn-secondary">Download</button>
+        </div>
+
+        <div id="message"></div>
+        <div id="stats"></div>
+
+        <div class="tabs" id="tabs" style="display:none;">
+          <button class="tab active" onclick="switchTab('openai')">OpenAI</button>
+          <button class="tab" onclick="switchTab('anthropic')">Anthropic</button>
+        </div>
+
+        <div id="openai-output" class="tab-content active">
+          <pre class="output" id="openai-content">Output will appear here...</pre>
+        </div>
+        <div id="anthropic-output" class="tab-content">
+          <pre class="output" id="anthropic-content">Output will appear here...</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>About</h2>
+      <div class="info">
+        <strong>Features:</strong>
+        <ul style="margin-left: 20px; margin-top: 10px;">
+          <li>Convert OpenAPI 3.0 and 3.1 specifications</li>
+          <li>Generate OpenAI function calling format</li>
+          <li>Generate Anthropic Claude tool format</li>
+          <li>Rich parameter descriptions with constraints and examples</li>
+          <li>Validation and error checking</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';
+
+    function loadExample() {
+      const example = {
+        "openapi": "3.1.0",
+        "info": {
+          "title": "User API",
+          "version": "1.0.0"
+        },
+        "paths": {
+          "/users": {
+            "get": {
+              "operationId": "listUsers",
+              "summary": "List all users",
+              "description": "Retrieve a paginated list of users",
+              "parameters": [
+                {
+                  "name": "limit",
+                  "in": "query",
+                  "description": "Maximum number of users to return",
+                  "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 20
+                  }
+                }
+              ],
+              "responses": {
+                "200": {
+                  "description": "Success"
+                }
+              }
+            }
+          }
+        }
+      };
+      document.getElementById('input').value = JSON.stringify(example, null, 2);
+    }
+
+    function clearInput() {
+      document.getElementById('input').value = '';
+      document.getElementById('message').innerHTML = '';
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('openai-content').textContent = 'Output will appear here...';
+      document.getElementById('anthropic-content').textContent = 'Output will appear here...';
+      document.getElementById('tabs').style.display = 'none';
+    }
+
+    async function validateSpec() {
+      const input = document.getElementById('input').value.trim();
+      if (!input) {
+        showError('Please provide an OpenAPI specification');
+        return;
+      }
+
+      try {
+        const spec = JSON.parse(input);
+        const response = await fetch(`${API_BASE}/api/convert/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spec })
+        });
+
+        const result = await response.json();
+
+        if (result.valid) {
+          showSuccess(`✓ Valid OpenAPI specification with ${result.operationsCount} operations`);
+        } else {
+          let message = '✗ Validation failed:\n';
+          result.issues.forEach(issue => {
+            message += `  ${issue.severity.toUpperCase()}: ${issue.message}`;
+            if (issue.path) message += ` (${issue.path})`;
+            message += '\n';
+          });
+          showError(message);
+        }
+      } catch (error) {
+        showError('Failed to validate: ' + error.message);
+      }
+    }
+
+    async function convert() {
+      const input = document.getElementById('input').value.trim();
+      const format = document.getElementById('format').value;
+
+      if (!input) {
+        showError('Please provide an OpenAPI specification');
+        return;
+      }
+
+      try {
+        const spec = JSON.parse(input);
+        const response = await fetch(`${API_BASE}/api/convert`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ spec, format })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          showError(error.error?.message || 'Conversion failed');
+          return;
+        }
+
+        const result = await response.json();
+
+        // Show stats
+        document.getElementById('stats').innerHTML = `
+          <div class="stats">
+            <div class="stat">
+              <div class="stat-label">API</div>
+              <div class="stat-value">${result.apiTitle}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Operations</div>
+              <div class="stat-value">${result.operationsCount}</div>
+            </div>
+          </div>
+        `;
+
+        // Show outputs
+        if (result.openai) {
+          document.getElementById('openai-content').textContent =
+            JSON.stringify(result.openai, null, 2);
+        }
+
+        if (result.anthropic) {
+          document.getElementById('anthropic-content').textContent =
+            JSON.stringify(result.anthropic, null, 2);
+        }
+
+        // Show tabs if both formats
+        if (format === 'both') {
+          document.getElementById('tabs').style.display = 'flex';
+        } else {
+          document.getElementById('tabs').style.display = 'none';
+          if (format === 'anthropic') {
+            switchTab('anthropic');
+          }
+        }
+
+        showSuccess('✓ Conversion successful!');
+      } catch (error) {
+        showError('Failed to convert: ' + error.message);
+      }
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      event.target.classList.add('active');
+      document.getElementById(tab + '-output').classList.add('active');
+    }
+
+    function copyOutput() {
+      const activeContent = document.querySelector('.tab-content.active pre');
+      navigator.clipboard.writeText(activeContent.textContent);
+      showSuccess('✓ Copied to clipboard!');
+    }
+
+    function downloadOutput() {
+      const format = document.getElementById('format').value;
+      const activeContent = document.querySelector('.tab-content.active pre');
+      const content = activeContent.textContent;
+
+      const blob = new Blob([content], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tools.${format === 'both' ? 'openai' : format}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      showSuccess('✓ Downloaded!');
+    }
+
+    function showError(message) {
+      document.getElementById('message').innerHTML =
+        `<div class="error">${message.replace(/\n/g, '<br>')}</div>`;
+    }
+
+    function showSuccess(message) {
+      document.getElementById('message').innerHTML =
+        `<div class="success">${message}</div>`;
+    }
+  </script>
+</body>
+</html>
