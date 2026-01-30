@@ -11,7 +11,7 @@ export interface GatewayConfig {
   /**
    * Gateway provider
    */
-  provider: 'kong' | 'apigee' | 'none';
+  provider: 'kong' | 'apigee' | 'aws' | 'azure' | 'none';
 
   /**
    * Gateway admin API URL

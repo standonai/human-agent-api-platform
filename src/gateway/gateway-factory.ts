@@ -8,6 +8,8 @@
 import { ApiGateway, GatewayConfig } from './types.js';
 import { KongGateway } from './kong-gateway.js';
 import { ApigeeGateway } from './apigee-gateway.js';
+import { AWSAPIGateway } from './aws-gateway.js';
+import { AzureAPIGateway } from './azure-gateway.js';
 
 /**
  * Create gateway instance from configuration
@@ -23,6 +25,12 @@ export function createGateway(config: GatewayConfig): ApiGateway | null {
 
     case 'apigee':
       return new ApigeeGateway(config);
+
+    case 'aws':
+      return new AWSAPIGateway(config);
+
+    case 'azure':
+      return new AzureAPIGateway(config);
 
     default:
       throw new Error(`Unknown gateway provider: ${config.provider}`);
@@ -43,7 +51,7 @@ export function loadGatewayConfig(): GatewayConfig {
     serviceName: process.env.GATEWAY_SERVICE_NAME || 'api-platform',
   };
 
-  // Apigee-specific configuration
+  // Provider-specific configuration
   if (provider === 'apigee') {
     config.extra = {
       organization: process.env.APIGEE_ORGANIZATION,
@@ -51,6 +59,26 @@ export function loadGatewayConfig(): GatewayConfig {
       username: process.env.APIGEE_USERNAME,
       password: process.env.APIGEE_PASSWORD,
       accessToken: process.env.GATEWAY_API_KEY || process.env.APIGEE_ACCESS_TOKEN,
+    };
+  } else if (provider === 'aws') {
+    config.extra = {
+      region: process.env.AWS_REGION || process.env.GATEWAY_AWS_REGION,
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || process.env.GATEWAY_AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || process.env.GATEWAY_AWS_SECRET_ACCESS_KEY,
+      apiType: process.env.AWS_API_TYPE || 'HTTP',
+      stageName: process.env.AWS_STAGE_NAME || '$default',
+      AWS_REGION: process.env.AWS_REGION,
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID,
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY,
+    };
+  } else if (provider === 'azure') {
+    config.extra = {
+      subscriptionId: process.env.AZURE_SUBSCRIPTION_ID || process.env.GATEWAY_AZURE_SUBSCRIPTION_ID,
+      resourceGroup: process.env.AZURE_RESOURCE_GROUP || process.env.GATEWAY_AZURE_RESOURCE_GROUP,
+      serviceName: process.env.AZURE_APIM_SERVICE_NAME || process.env.GATEWAY_AZURE_SERVICE_NAME,
+      tenantId: process.env.AZURE_TENANT_ID,
+      clientId: process.env.AZURE_CLIENT_ID,
+      clientSecret: process.env.AZURE_CLIENT_SECRET,
     };
   }
 
