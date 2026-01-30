@@ -17,9 +17,13 @@ import {
   VersionConfig,
   rateLimit,
 } from './middleware/index.js';
+import { metricsMiddleware } from './observability/index.js';
 import { ErrorCode } from './types/errors.js';
 import converterRoutes from './api/converter-routes.js';
 import usersRoutes from './api/users-routes.js';
+import metricsRoutes from './api/metrics-routes.js';
+import gatewayRoutes from './api/gateway-routes.js';
+import { getGatewayManager } from './gateway/index.js';
 
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +56,7 @@ const versionConfig: VersionConfig = {
 
 app.use(versioningMiddleware(versionConfig));
 app.use(agentTrackingMiddleware);
+app.use(metricsMiddleware); // Collect metrics for observability
 
 // Rate limiting with agent-aware defaults (100 human / 500 agent requests per minute)
 // Optional: customize for premium agents
@@ -70,6 +75,8 @@ app.use(dryRunMiddleware);
 app.use(express.static(join(__dirname, '../public')));
 
 // Mount API routes
+app.use('/api/gateway', gatewayRoutes);
+app.use('/api/metrics', metricsRoutes);
 app.use('/api', converterRoutes);
 app.use('/api/v2/users', usersRoutes);
 
@@ -223,7 +230,17 @@ app.use(
 // Start server
 const PORT = process.env.PORT || 3000;
 
-export function startServer(): void {
+export async function startServer(): Promise<void> {
+  // Initialize gateway connection
+  const gatewayManager = getGatewayManager();
+  if (gatewayManager.isEnabled()) {
+    try {
+      await gatewayManager.initialize();
+    } catch (error) {
+      console.warn('⚠️  Gateway initialization failed (continuing without gateway)');
+    }
+  }
+
   app.listen(PORT, () => {
     console.log(`
 🚀 API Platform Server Started
@@ -232,10 +249,21 @@ Environment: ${process.env.NODE_ENV || 'development'}
 Port: ${PORT}
 Default API Version: ${versionConfig.defaultVersion}
 
+📊 Observability Dashboard:
+  🌐 http://localhost:${PORT}/dashboard.html
+
 Available Endpoints:
   GET  /                - Web UI for OpenAPI converter
   GET  /health          - Health check
   GET  /api/agents/info - Agent identification info
+
+Observability:
+  GET  /api/metrics        - Get aggregated metrics
+  GET  /api/metrics/health - Metrics system health
+
+Gateway Management:
+  GET  /api/gateway/status - Gateway connection status
+  POST /api/gateway/sync   - Manually sync OpenAPI spec
 
 Validated User API (with Zod):
   GET    /api/v2/users       - List users (validated query params)
@@ -251,8 +279,8 @@ Converter API:
 
 Try it out:
   curl http://localhost:${PORT}/health
+  curl http://localhost:${PORT}/api/metrics
   curl -H "X-Agent-ID: my-agent" http://localhost:${PORT}/api/agents/info
-  curl http://localhost:${PORT}/api/users?limit=200
     `);
   });
 }

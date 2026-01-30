@@ -14,7 +14,10 @@
     "test": "vitest",
     "test:coverage": "vitest --coverage",
     "type-check": "tsc --noEmit",
-    "generate:tools": "tsx src/cli/generate-tools.ts"
+    "generate:tools": "tsx src/cli/generate-tools.ts",
+    "gateway:sync": "tsx src/cli/sync-gateway.ts sync",
+    "gateway:status": "tsx src/cli/sync-gateway.ts status",
+    "gateway:health": "tsx src/cli/sync-gateway.ts health"
   },
   "keywords": [
     "api",

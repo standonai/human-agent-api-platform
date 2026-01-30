@@ -112,10 +112,27 @@ paths:
                   doc_url: 'https://docs.example.com/errors/INVALID_PARAMETER'
                   request_id: 'req_abc123'
 
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: 'RATE_LIMIT_EXCEEDED'
+                  message: 'Rate limit exceeded'
+                  details:
+                    - code: 'TOO_MANY_REQUESTS'
+                      message: 'You have exceeded the rate limit of 100 requests per 60 seconds'
+                      suggestion: 'Wait 45 seconds before retrying. Implement exponential backoff to avoid retry storms.'
+                  request_id: 'req_abc123'
+
 components:
   schemas:
     ErrorResponse:
       type: object
+      description: Standard error response envelope containing error details
       required:
         - error
       properties:
@@ -124,6 +141,7 @@ components:
 
     ApiError:
       type: object
+      description: Detailed error information following RFC 7807 problem details pattern
       required:
         - code
         - message
@@ -158,6 +176,7 @@ components:
 
     ErrorDetail:
       type: object
+      description: Granular error detail with actionable suggestions for agent self-correction
       required:
         - code
         - message

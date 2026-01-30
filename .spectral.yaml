@@ -1,22 +1,201 @@
-extends: ["spectral:oas"]
+extends: ["spectral:oas", "spectral:asyncapi"]
 
 rules:
-  # Custom rules for agent-friendly APIs
+  # ============================================================================
+  # AGENT-FRIENDLY API RULES
+  # These rules enforce the platform's architecture pillars
+  # ============================================================================
 
-  # All parameters must have descriptions (P0 requirement S2)
+  # PILLAR 1: Schema-First Design
+  # All parameters must have descriptions for LLM context
   parameter-description-required:
-    description: All parameters must have descriptions for LLM context
+    description: Parameters must have descriptions (critical for agent understanding)
     given: "$.paths.*[*].parameters[*]"
     severity: error
     then:
       field: description
       function: truthy
 
-  # All operations must define error responses
-  error-response-defined:
-    description: All operations must define 4xx error responses
-    given: "$.paths[*][*].responses"
+  # All parameters should have examples
+  parameter-example-required:
+    description: Parameters should include examples for agent guidance
+    given: "$.paths.*[*].parameters[*].schema"
+    severity: warn
+    then:
+      field: example
+      function: truthy
+
+  # All request bodies must have examples
+  requestbody-example-required:
+    description: Request bodies must include examples
+    given: "$.paths.*[post,put,patch].requestBody.content.*.schema"
+    severity: warn
+    then:
+      field: example
+      function: truthy
+
+  # PILLAR 2: Structured Error Responses
+  # All operations must define 400 error responses
+  error-response-400-required:
+    description: Operations must define 400 Bad Request response
+    given: "$.paths[*][get,post,put,patch,delete].responses"
     severity: error
     then:
       field: "400"
       function: truthy
+
+  # All operations must define 429 rate limit response
+  error-response-429-required:
+    description: Operations must define 429 Rate Limit response
+    given: "$.paths[*][get,post,put,patch,delete].responses"
+    severity: error
+    then:
+      field: "429"
+      function: truthy
+
+  # Error examples must include suggestion field
+  error-detail-suggestion-required:
+    description: Error details MUST include actionable suggestions for agent self-correction
+    given: "$.paths.*[*].responses.*.content.*.example.error.details[*]"
+    severity: error
+    then:
+      field: suggestion
+      function: truthy
+
+  # Error responses must use standard error schema
+  error-response-schema-standard:
+    description: Error responses must reference standard ErrorResponse schema
+    given: "$.paths.*[*].responses[4xx,5xx].content.*.schema"
+    severity: warn
+    then:
+      field: $ref
+      function: pattern
+      functionOptions:
+        match: ".*ErrorResponse$"
+
+  # PILLAR 3: Versioning
+  # API-Version header should be documented
+  api-version-header-documented:
+    description: Operations should document API-Version header
+    given: "$.paths.*[*]"
+    severity: warn
+    then:
+      field: parameters
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          contains:
+            type: object
+            properties:
+              name:
+                const: API-Version
+
+  # PILLAR 4: Agent-Aware Features
+  # Mutations should support dry-run parameter
+  dry-run-parameter-for-mutations:
+    description: Mutations (POST/PUT/PATCH/DELETE) should support dry_run query parameter
+    given: "$.paths.*[post,put,patch,delete]"
+    severity: warn
+    then:
+      field: parameters
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          contains:
+            type: object
+            properties:
+              name:
+                const: dry_run
+
+  # Rate limit headers should be documented
+  rate-limit-headers-documented:
+    description: Successful responses should document rate limit headers
+    given: "$.paths.*[*].responses.2*.headers"
+    severity: warn
+    then:
+      field: X-RateLimit-Limit
+      function: truthy
+
+  # Request ID header should be documented
+  request-id-header-documented:
+    description: All responses should document X-Request-ID header
+    given: "$.paths.*[*].responses.*.headers"
+    severity: warn
+    then:
+      field: X-Request-ID
+      function: truthy
+
+  # PILLAR 5: AI-Focused Documentation
+  # Operation descriptions should be concise (< 500 chars for LLM context)
+  operation-description-concise:
+    description: Operation descriptions should be concise for LLM consumption
+    given: "$.paths.*[*].description"
+    severity: warn
+    then:
+      function: length
+      functionOptions:
+        max: 500
+
+  # All operations must have operationId for agent tool mapping
+  operation-operationid-required:
+    description: Operations must have operationId for tool definition mapping
+    given: "$.paths.*[*]"
+    severity: error
+    then:
+      field: operationId
+      function: truthy
+
+  # All operations must have tags for organization
+  operation-tag-required:
+    description: Operations must have tags for organization and filtering
+    given: "$.paths.*[*]"
+    severity: error
+    then:
+      field: tags
+      function: truthy
+
+  # GENERAL QUALITY RULES
+  # Info object must have contact information
+  info-contact-required:
+    description: API must have contact information
+    given: "$.info"
+    severity: error
+    then:
+      field: contact
+      function: truthy
+
+  # Schemas should have descriptions
+  schema-description-required:
+    description: Reusable schemas should have descriptions
+    given: "$.components.schemas[*]"
+    severity: warn
+    then:
+      field: description
+      function: truthy
+
+  # Success responses should have proper status codes
+  success-response-required:
+    description: Operations must define at least one 2xx success response
+    given: "$.paths.*[*].responses"
+    severity: error
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          anyOf:
+            - required: ['200']
+            - required: ['201']
+            - required: ['204']
+
+  # SECURITY (when auth is added)
+  # Placeholder for future security rules
+  # operation-security-defined:
+  #   description: Operations should define security requirements
+  #   given: "$.paths.*[*]"
+  #   severity: warn
+  #   then:
+  #     field: security
+  #     function: truthy

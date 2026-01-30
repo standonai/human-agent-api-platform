@@ -31,7 +31,6 @@ jobs:
 
       - name: Lint API specifications
         run: npm run lint:api
-        continue-on-error: true
 
       - name: Run tests
         run: npm test

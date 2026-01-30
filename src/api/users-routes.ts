@@ -86,7 +86,7 @@ router.post(
     if (existingUser) {
       res.status(409).json({
         error: {
-          code: 'DUPLICATE_EMAIL',
+          code: 'CONFLICT',
           message: 'A user with this email already exists',
           target: 'email',
           details: [
