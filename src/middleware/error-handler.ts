@@ -39,8 +39,16 @@ export interface ErrorHandlerConfig {
 
 /**
  * Error handler middleware
+ *
+ * Security features:
+ * - Never leaks stack traces in production
+ * - Never exposes internal file paths
+ * - Logs full error details internally
+ * - Sends sanitized errors to clients
  */
 export function errorHandler(config: ErrorHandlerConfig = {}) {
+  const isDevelopment = process.env.NODE_ENV === 'development';
+
   return (err: Error | ApiError, req: Request, res: Response, next: NextFunction): void => {
     // If headers already sent, delegate to default error handler
     if (res.headersSent) {
@@ -48,6 +56,20 @@ export function errorHandler(config: ErrorHandlerConfig = {}) {
     }
 
     const requestId = req.requestId || 'unknown';
+
+    // 🔒 Security: Log full error details internally (never sent to client)
+    console.error('🚨 Error occurred:', {
+      requestId,
+      error: err.message,
+      stack: err.stack,
+      name: err.name,
+      userId: (req as any).user?.id,
+      agentId: (req as any).agent?.id,
+      ip: req.ip,
+      method: req.method,
+      path: req.path,
+      timestamp: new Date().toISOString(),
+    });
 
     // Handle ApiError instances
     if (err instanceof ApiError) {
@@ -82,7 +104,7 @@ export function errorHandler(config: ErrorHandlerConfig = {}) {
       )
         .withDetail(
           'VALIDATION_FAILED',
-          err.message,
+          isDevelopment ? err.message : 'One or more fields failed validation',
           'Check the request parameters and try again'
         )
         .build();
@@ -112,27 +134,34 @@ export function errorHandler(config: ErrorHandlerConfig = {}) {
       return;
     }
 
-    // Handle unexpected errors
-    console.error('Unhandled error:', err);
-
+    // 🔒 Security: Handle unexpected errors
+    // Production: Generic message, no details
+    // Development: Full error message (but never stack trace in response)
     const errorResponse = new ErrorBuilder(
       ErrorCode.INTERNAL_SERVER_ERROR,
-      config.includeStackTrace
+      isDevelopment
         ? err.message
         : 'An unexpected error occurred',
       requestId
     )
       .withDetail(
         'INTERNAL_ERROR',
-        'The server encountered an unexpected condition',
+        isDevelopment
+          ? 'Check server logs for details'
+          : 'The server encountered an unexpected condition',
         'Please try again later or contact support if the problem persists'
       )
       .build();
 
-    // Include stack trace in development
-    if (config.includeStackTrace && err.stack) {
-      (errorResponse.error as any).stack = err.stack;
-    }
+    // 🔒 Security: NEVER include stack traces in API responses
+    // Stack traces can leak:
+    // - Internal file paths
+    // - Code structure
+    // - Library versions
+    // - Security vulnerabilities
+    //
+    // Instead, use request_id to correlate with server logs
+    // Example: "Contact support with request ID: req_abc123"
 
     res.status(500).json(errorResponse);
   };

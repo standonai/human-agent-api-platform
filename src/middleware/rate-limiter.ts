@@ -1,13 +1,17 @@
 /**
  * Rate Limiting Middleware
  *
- * Simple, agent-aware rate limiting with retry-after information.
- * Just works with zero configuration.
+ * Distributed rate limiting with Redis support and in-memory fallback.
+ * - Uses Redis for multi-instance deployments (sliding window algorithm)
+ * - Falls back to in-memory for single-instance (fixed window algorithm)
+ * - Agent-aware with custom limits
+ * - Zero configuration - just works
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from './error-handler.js';
 import { ErrorCode } from '../types/errors.js';
+import { getRedisRateLimiter } from './rate-limiter-redis.js';
 
 /**
  * Rate limit configuration
@@ -49,7 +53,11 @@ interface RateLimitEntry {
 const store = new Map<string, RateLimitEntry>();
 
 /**
- * Rate limiting middleware with agent-aware defaults
+ * Rate limiting middleware with Redis support and agent-aware defaults
+ *
+ * Automatically uses:
+ * - Redis (sliding window) when available → Distributed across instances
+ * - In-memory (fixed window) as fallback → Single instance only
  *
  * @example
  * // Zero config - just works
@@ -72,7 +80,10 @@ export function rateLimit(config?: RateLimitConfig): (req: Request, res: Respons
   const windowMs = config?.windowMs ?? 60000;
   const customLimits = config?.customLimits;
 
-  return (req: Request, res: Response, next: NextFunction): void => {
+  // Get Redis rate limiter (may not be available)
+  const redisLimiter = getRedisRateLimiter();
+
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const now = Date.now();
 
     // Generate key from IP and agent ID
@@ -90,32 +101,46 @@ export function rateLimit(config?: RateLimitConfig): (req: Request, res: Respons
       limit = agentLimit;
     }
 
-    // Get or create entry (fixed window)
-    let entry = store.get(key);
+    // Try Redis first (distributed), fallback to in-memory
+    let allowed = true;
+    let remaining = 0;
+    let resetAt = 0;
+    let usedRedis = false;
 
-    if (!entry || entry.resetAt < now) {
-      entry = { count: 0, resetAt: now + windowMs };
-      store.set(key, entry);
-
-      // Clean expired entries (simple on-demand cleanup)
-      if (store.size > 10000) {
-        for (const [k, v] of store.entries()) {
-          if (v.resetAt < now) store.delete(k);
-        }
+    try {
+      if (redisLimiter.isAvailable()) {
+        // Use Redis (sliding window - more accurate)
+        const result = await redisLimiter.checkLimit(key, limit, windowMs);
+        allowed = result.allowed;
+        remaining = result.remaining;
+        resetAt = result.resetAt;
+        usedRedis = true;
+      } else {
+        // Fallback to in-memory (fixed window)
+        const inMemoryResult = checkInMemoryLimit(key, limit, windowMs, now);
+        allowed = inMemoryResult.allowed;
+        remaining = inMemoryResult.remaining;
+        resetAt = inMemoryResult.resetAt;
       }
+    } catch (error) {
+      // Redis failed, use in-memory fallback
+      if (usedRedis) {
+        console.warn('⚠️  Redis rate limit check failed, using in-memory fallback');
+      }
+      const inMemoryResult = checkInMemoryLimit(key, limit, windowMs, now);
+      allowed = inMemoryResult.allowed;
+      remaining = inMemoryResult.remaining;
+      resetAt = inMemoryResult.resetAt;
     }
 
-    entry.count++;
-
     // Set rate limit headers
-    const remaining = Math.max(0, limit - entry.count);
     res.setHeader('X-RateLimit-Limit', limit.toString());
     res.setHeader('X-RateLimit-Remaining', remaining.toString());
-    res.setHeader('X-RateLimit-Reset', new Date(entry.resetAt).toISOString());
+    res.setHeader('X-RateLimit-Reset', new Date(resetAt).toISOString());
 
     // Check if limit exceeded
-    if (entry.count > limit) {
-      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+    if (!allowed) {
+      const retryAfter = Math.ceil((resetAt - now) / 1000);
       res.setHeader('Retry-After', retryAfter.toString());
 
       throw new ApiError(
@@ -135,6 +160,44 @@ export function rateLimit(config?: RateLimitConfig): (req: Request, res: Respons
     }
 
     next();
+  };
+}
+
+/**
+ * In-memory rate limit check (fallback when Redis unavailable)
+ * Uses fixed window algorithm
+ */
+function checkInMemoryLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  now: number
+): { allowed: boolean; remaining: number; resetAt: number } {
+  // Get or create entry (fixed window)
+  let entry = store.get(key);
+
+  if (!entry || entry.resetAt < now) {
+    entry = { count: 0, resetAt: now + windowMs };
+    store.set(key, entry);
+
+    // Clean expired entries (simple on-demand cleanup)
+    if (store.size > 10000) {
+      for (const [k, v] of store.entries()) {
+        if (v.resetAt < now) store.delete(k);
+      }
+    }
+  }
+
+  entry.count++;
+
+  // Calculate remaining and check if allowed
+  const remaining = Math.max(0, limit - entry.count);
+  const allowed = entry.count <= limit;
+
+  return {
+    allowed,
+    remaining,
+    resetAt: entry.resetAt,
   };
 }
 

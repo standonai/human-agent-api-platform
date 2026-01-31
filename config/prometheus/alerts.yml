@@ -1,0 +1,201 @@
+# Prometheus Alert Rules for API Platform
+#
+# Usage:
+# 1. Save this file in your Prometheus configuration directory
+# 2. Reference in prometheus.yml:
+#    rule_files:
+#      - 'alerts.yml'
+
+groups:
+  - name: api_platform_alerts
+    interval: 30s
+    rules:
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{status_code=~"5.."}[5m])
+          /
+          rate(http_requests_total[5m])
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # High Response Time
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile response time is {{ $value }}s (threshold: 2s)"
+
+      # Memory Usage High
+      - alert: HighMemoryUsage
+        expr: |
+          (nodejs_heap_used_bytes / nodejs_heap_total_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Heap usage is {{ $value | humanizePercentage }} (threshold: 85%)"
+
+      # Memory Usage Critical
+      - alert: CriticalMemoryUsage
+        expr: |
+          (nodejs_heap_used_bytes / nodejs_heap_total_bytes) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Critical memory usage"
+          description: "Heap usage is {{ $value | humanizePercentage }} (threshold: 95%)"
+
+      # Event Loop Lag
+      - alert: HighEventLoopLag
+        expr: nodejs_eventloop_lag_seconds > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High event loop lag"
+          description: "Event loop lag is {{ $value }}s (threshold: 0.1s)"
+
+      # Rate Limiting High
+      - alert: HighRateLimitHits
+        expr: |
+          rate(rate_limit_hits_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High rate of rate limit hits"
+          description: "{{ $value }} rate limit hits per second"
+
+      # Authentication Failures
+      - alert: HighAuthFailureRate
+        expr: |
+          rate(auth_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "{{ $value }} auth failures per second (possible brute force attack)"
+
+      # Injection Attempts
+      - alert: InjectionAttacksDetected
+        expr: |
+          rate(injection_attempts_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "Injection attacks detected"
+          description: "{{ $value }} injection attempts per second"
+
+      # Redis Down
+      - alert: RedisUnavailable
+        expr: |
+          up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Redis is unavailable"
+          description: "Redis has been down for 2 minutes (using in-memory fallback)"
+
+      # Service Down
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API Platform service is down"
+          description: "Service has been unreachable for 1 minute"
+
+      # High Request Rate
+      - alert: HighRequestRate
+        expr: |
+          rate(http_requests_total[1m]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High request rate"
+          description: "{{ $value }} requests per second (possible DDoS)"
+
+      # Cache Miss Rate High
+      - alert: HighCacheMissRate
+        expr: |
+          rate(cache_misses_total[5m])
+          /
+          (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m]))
+          > 0.5
+        for: 10m
+        labels:
+          severity: info
+          component: cache
+        annotations:
+          summary: "High cache miss rate"
+          description: "Cache miss rate is {{ $value | humanizePercentage }}"
+
+      # External Service Errors
+      - alert: ExternalServiceErrors
+        expr: |
+          rate(external_service_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: external
+        annotations:
+          summary: "External service errors detected"
+          description: "{{ $value }} errors per second calling {{ $labels.service }}"
+
+      # Low Active Users (Anomaly Detection)
+      - alert: LowActiveUsers
+        expr: |
+          active_users < 1
+          and
+          hour() >= 9 and hour() <= 17
+        for: 30m
+        labels:
+          severity: info
+          component: business
+        annotations:
+          summary: "Unusually low active users during business hours"
+          description: "Only {{ $value }} active users"
+
+      # Secrets Manager Down
+      - alert: SecretsManagerUnavailable
+        expr: |
+          up{job="vault"} == 0
+          or
+          up{job="aws-secrets-manager"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "Secrets manager is unavailable"
+          description: "Using fallback to environment variables"

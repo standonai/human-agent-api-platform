@@ -45,3 +45,6 @@ temp/
 *.key
 secrets/
 credentials.json
+logs/
+certs/
+*.pem

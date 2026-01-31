@@ -3,7 +3,12 @@
  * Demonstrates all middleware and platform standards
  */
 
+// Load environment variables from .env file
+import { config } from 'dotenv';
+config();
+
 import express, { Request, Response } from 'express';
+import http from 'http';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -16,23 +21,64 @@ import {
   ApiError,
   VersionConfig,
   rateLimit,
+  corsMiddleware,
+  logCorsConfig,
+  securityHeaders,
+  customSecurityHeaders,
+  logSecurityHeaders,
+  sanitizeInput,
+  detectInjectionAttacks,
+  auditLogMiddleware,
+  httpsRedirect,
 } from './middleware/index.js';
 import { metricsMiddleware } from './observability/index.js';
 import { ErrorCode } from './types/errors.js';
 import converterRoutes from './api/converter-routes.js';
 import usersRoutes from './api/users-routes.js';
+import tasksRoutes from './api/tasks-routes.js';
 import metricsRoutes from './api/metrics-routes.js';
 import gatewayRoutes from './api/gateway-routes.js';
+import authRoutes from './api/auth-routes.js';
+import agentsRoutes from './api/agents-routes.js';
+import auditRoutes from './api/audit-routes.js';
+import monitoringRoutes from './api/monitoring-routes.js';
+import secretsRoutes from './api/secrets-routes.js';
 import { getGatewayManager } from './gateway/index.js';
+import { initializeDefaultUsers } from './auth/user-store.js';
+import { initializeDefaultAgents } from './auth/agent-store.js';
+import { createHTTPSServer, isTLSEnabled, logTLSStatus } from './config/tls-config.js';
+import { initializeRedis, logRedisStatus } from './config/redis-config.js';
+import { createSecretsProvider, initializeSecretsManager, logSecretsStatus, getSecretsManager } from './secrets/index.js';
+import { prometheusMiddleware, enableDefaultMetrics, startSystemMetricsCollection } from './monitoring/index.js';
 
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Parse JSON bodies
-app.use(express.json());
+// 🔒 Security: HTTPS redirect (production only)
+app.use(httpsRedirect);
+
+// 🔒 Security: Apply security headers FIRST (before any other middleware)
+app.use(securityHeaders);
+app.use(customSecurityHeaders);
+
+// 🔒 Security: CORS - Restrict which origins can access the API
+app.use(corsMiddleware);
+
+// Parse JSON bodies with size limit (prevent memory exhaustion)
+app.use(express.json({ limit: '10mb' }));
 
 // Apply core middleware
 app.use(requestIdMiddleware);
+
+// 📊 Monitoring: Collect Prometheus metrics (must be after requestId)
+app.use(prometheusMiddleware());
+
+// 📝 Audit: Log all requests (must be after requestId)
+app.use(auditLogMiddleware);
+
+// 🔒 Security: Input sanitization and injection detection
+app.use(sanitizeInput);           // Sanitize all string inputs (XSS prevention)
+app.use(detectInjectionAttacks);  // Detect SQL/NoSQL/command injection attempts
 
 // Configure API versioning
 const versionConfig: VersionConfig = {
@@ -75,10 +121,16 @@ app.use(dryRunMiddleware);
 app.use(express.static(join(__dirname, '../public')));
 
 // Mount API routes
-app.use('/api/gateway', gatewayRoutes);
-app.use('/api/metrics', metricsRoutes);
-app.use('/api', converterRoutes);
-app.use('/api/v2/users', usersRoutes);
+app.use('/api/auth', authRoutes);          // Authentication routes (public)
+app.use('/api/agents', agentsRoutes);      // Agent management (admin only)
+app.use('/api/audit', auditRoutes);        // Audit logs (admin only)
+app.use('/api/secrets', secretsRoutes);    // Secret lifecycle management (admin only)
+app.use('/api/gateway', gatewayRoutes);    // Gateway management
+app.use('/api/metrics', metricsRoutes);    // Legacy metrics
+app.use('/api/monitoring', monitoringRoutes); // Prometheus metrics & health
+app.use('/api', converterRoutes);          // OpenAPI converter
+app.use('/api/v2/users', usersRoutes);     // User API
+app.use('/api/v2/tasks', tasksRoutes);     // Tasks API
 
 // Example endpoints demonstrating platform standards (legacy)
 
@@ -231,6 +283,29 @@ app.use(
 const PORT = process.env.PORT || 3000;
 
 export async function startServer(): Promise<void> {
+  // Initialize monitoring metrics collection
+  enableDefaultMetrics();
+  startSystemMetricsCollection();
+
+  // Initialize secrets manager FIRST (before anything that needs secrets)
+  try {
+    const provider = await createSecretsProvider();
+    await initializeSecretsManager(provider);
+  } catch (error) {
+    console.warn('⚠️  Secrets manager initialization failed (using environment variables)');
+  }
+
+  // Initialize default users and agents (for testing)
+  await initializeDefaultUsers();
+  initializeDefaultAgents();
+
+  // Initialize Redis for distributed rate limiting (optional)
+  try {
+    await initializeRedis();
+  } catch (error) {
+    console.warn('⚠️  Redis initialization failed (using in-memory rate limiting)');
+  }
+
   // Initialize gateway connection
   const gatewayManager = getGatewayManager();
   if (gatewayManager.isEnabled()) {
@@ -241,16 +316,68 @@ export async function startServer(): Promise<void> {
     }
   }
 
-  app.listen(PORT, () => {
+  // Determine if TLS is enabled
+  const tlsEnabled = isTLSEnabled();
+  const protocol = tlsEnabled ? 'https' : 'http';
+  const httpsPort = process.env.HTTPS_PORT || 443;
+
+  // Create appropriate server
+  let server: http.Server;
+
+  if (tlsEnabled) {
+    // HTTPS server
+    server = createHTTPSServer(app);
+
+    // In production, also create HTTP server for redirect
+    if (process.env.NODE_ENV === 'production') {
+      const httpApp = express();
+      httpApp.use(httpsRedirect);
+      http.createServer(httpApp).listen(PORT, () => {
+        console.log(`🔄 HTTP redirect server listening on port ${PORT}`);
+        console.log(`   All traffic redirected to https://`);
+      });
+    }
+  } else {
+    // HTTP server (development)
+    server = http.createServer(app);
+  }
+
+  // Start the server
+  const listenPort = tlsEnabled && process.env.NODE_ENV === 'production' ? httpsPort : PORT;
+
+  server.listen(listenPort, () => {
     console.log(`
 🚀 API Platform Server Started
 
 Environment: ${process.env.NODE_ENV || 'development'}
-Port: ${PORT}
+Port: ${listenPort}
+Protocol: ${protocol.toUpperCase()}
 Default API Version: ${versionConfig.defaultVersion}
+`);
+
+    // Log TLS status
+    console.log('');
+    logTLSStatus();
+
+    // Log Redis status
+    console.log('');
+    logRedisStatus();
+
+    // Log secrets management status
+    console.log('');
+    const secretsManager = getSecretsManager();
+    logSecretsStatus(secretsManager.getProviderName());
+
+    // Log security configuration
+    console.log('');
+    logSecurityHeaders();
+    console.log('');
+    logCorsConfig();
+
+    console.log(`
 
 📊 Observability Dashboard:
-  🌐 http://localhost:${PORT}/dashboard.html
+  🌐 ${protocol}://localhost:${listenPort}/dashboard.html
 
 Available Endpoints:
   GET  /                - Web UI for OpenAPI converter
@@ -258,8 +385,14 @@ Available Endpoints:
   GET  /api/agents/info - Agent identification info
 
 Observability:
-  GET  /api/metrics        - Get aggregated metrics
-  GET  /api/metrics/health - Metrics system health
+  GET  /api/metrics        - Get aggregated metrics (legacy)
+  GET  /api/metrics/health - Metrics system health (legacy)
+
+Monitoring (Prometheus):
+  GET  /api/monitoring/metrics      - Prometheus metrics
+  GET  /api/monitoring/health       - Comprehensive health check
+  GET  /api/monitoring/health/ready - Readiness probe (Kubernetes)
+  GET  /api/monitoring/health/live  - Liveness probe (Kubernetes)
 
 Gateway Management:
   GET  /api/gateway/status - Gateway connection status
@@ -278,9 +411,9 @@ Converter API:
   GET  /api/convert/info     - Converter information
 
 Try it out:
-  curl http://localhost:${PORT}/health
-  curl http://localhost:${PORT}/api/metrics
-  curl -H "X-Agent-ID: my-agent" http://localhost:${PORT}/api/agents/info
+  curl ${protocol}://localhost:${listenPort}/health
+  curl ${protocol}://localhost:${listenPort}/api/metrics
+  curl -H "X-Agent-ID: my-agent" ${protocol}://localhost:${listenPort}/api/agents/info
     `);
   });
 }

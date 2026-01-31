@@ -1,0 +1,88 @@
+# Prometheus Configuration for API Platform Monitoring
+#
+# This file configures Prometheus to scrape metrics from the API Platform
+# and load alerting rules.
+#
+# Usage:
+# 1. Copy this file to your Prometheus directory
+# 2. Update the target address if not running on localhost
+# 3. Start Prometheus: prometheus --config.file=prometheus.yml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'api-platform'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - 'localhost:9093'  # Alertmanager address
+
+# Load alert rules
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # API Platform metrics
+  - job_name: 'api-platform'
+    static_configs:
+      - targets: ['localhost:3000']
+    metrics_path: '/api/monitoring/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Health check monitoring
+  - job_name: 'api-platform-health'
+    static_configs:
+      - targets: ['localhost:3000']
+    metrics_path: '/api/monitoring/health'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'up'
+        action: keep
+
+  # Redis monitoring (if running)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['localhost:6379']
+    scrape_interval: 15s
+    # Requires redis_exporter:
+    # docker run -d -p 9121:9121 oliver006/redis_exporter
+
+  # Node Exporter for system metrics (optional)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+    # Requires node_exporter:
+    # Download from: https://prometheus.io/download/#node_exporter
+
+# Example multi-instance setup (for production)
+# - job_name: 'api-platform-cluster'
+#   static_configs:
+#     - targets:
+#         - 'api-01.example.com:3000'
+#         - 'api-02.example.com:3000'
+#         - 'api-03.example.com:3000'
+#   metrics_path: '/api/monitoring/metrics'
+
+# Example Kubernetes service discovery
+# - job_name: 'api-platform-k8s'
+#   kubernetes_sd_configs:
+#     - role: pod
+#       namespaces:
+#         names:
+#           - production
+#   relabel_configs:
+#     - source_labels: [__meta_kubernetes_pod_label_app]
+#       regex: api-platform
+#       action: keep
+#     - source_labels: [__meta_kubernetes_pod_container_port_number]
+#       regex: "3000"
+#       action: keep
