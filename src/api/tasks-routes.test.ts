@@ -21,6 +21,8 @@ describe('Tasks API', () => {
       const task = {
         id: 'task_1',
         ...taskData,
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -64,6 +66,8 @@ describe('Tasks API', () => {
         id: 'task_1',
         title: 'Task 1',
         status: 'todo',
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -72,6 +76,8 @@ describe('Tasks API', () => {
         id: 'task_2',
         title: 'Task 2',
         status: 'done',
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -85,6 +91,8 @@ describe('Tasks API', () => {
         id: 'task_1',
         title: 'Task 1',
         status: 'todo',
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -93,6 +101,8 @@ describe('Tasks API', () => {
         id: 'task_2',
         title: 'Task 2',
         status: 'done',
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -109,6 +119,8 @@ describe('Tasks API', () => {
         id: 'task_1',
         title: 'Test task',
         status: 'todo' as const,
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -132,6 +144,8 @@ describe('Tasks API', () => {
         id: 'task_1',
         title: 'Original title',
         status: 'todo' as const,
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -160,6 +174,8 @@ describe('Tasks API', () => {
         id: 'task_1',
         title: 'To be deleted',
         status: 'todo' as const,
+        createdBy: 'user_1',
+        ownerId: 'user_1',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

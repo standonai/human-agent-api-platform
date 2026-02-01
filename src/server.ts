@@ -50,6 +50,7 @@ import { createHTTPSServer, isTLSEnabled, logTLSStatus } from './config/tls-conf
 import { initializeRedis, logRedisStatus } from './config/redis-config.js';
 import { createSecretsProvider, initializeSecretsManager, logSecretsStatus, getSecretsManager } from './secrets/index.js';
 import { prometheusMiddleware, enableDefaultMetrics, startSystemMetricsCollection } from './monitoring/index.js';
+import { initializeAuthorization } from './authorization/index.js';
 
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -294,6 +295,9 @@ export async function startServer(): Promise<void> {
   } catch (error) {
     console.warn('⚠️  Secrets manager initialization failed (using environment variables)');
   }
+
+  // Initialize authorization system (register policies)
+  await initializeAuthorization();
 
   // Initialize default users and agents (for testing)
   await initializeDefaultUsers();

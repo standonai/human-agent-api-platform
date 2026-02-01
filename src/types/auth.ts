@@ -84,6 +84,15 @@ export interface RefreshTokenRequest {
 }
 
 /**
+ * Resource ownership tracking (OWASP API1 protection)
+ */
+export interface ResourceOwnership {
+  createdBy: string;    // User/agent ID that created resource
+  ownerId: string;      // Primary owner (defaults to createdBy)
+  updatedBy?: string;   // Last modifier
+}
+
+/**
  * Extended Express Request with authenticated user
  */
 declare global {

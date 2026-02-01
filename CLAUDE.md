@@ -267,6 +267,19 @@ The platform includes enterprise-grade security features (all production-ready, 
 - **Tests:** 10/10 passing
 - **Endpoints:** `/api/monitoring/metrics`, `/api/monitoring/health/*`
 
+### Fine-Grained Authorization (OWASP API1 & API3 Protection)
+- **Object-Level Authorization:** Automatic ownership checks on every resource access
+- **Field-Level Authorization:** Prevents unauthorized property access/modification
+- **Declarative Policies:** Centralized, readable authorization rules per resource type
+- **Ownership Tracking:** Universal tracking (createdBy, ownerId, updatedBy) across all resources
+- **Zero-Config:** Smart defaults with optional customization
+- **Agent-Aware:** Works with both user and agent authentication
+- **Actionable Errors:** Every denial includes specific suggestions
+- **Files:** `src/authorization/*` (policy-engine, field-filter, middleware, policies)
+- **Tests:** Manual test script (`scripts/test-owasp-api1-api3.sh`)
+- **Documentation:** See `AUTHORIZATION.md` for full details
+- **Status:** ✅ Production-ready, applied to Tasks API
+
 ### Security Middleware Stack (Execution Order)
 1. HTTPS redirect (production only)
 2. Security headers (CSP, HSTS, X-Frame-Options, etc.)
