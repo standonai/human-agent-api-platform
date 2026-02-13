@@ -146,7 +146,7 @@ When implementing features, keep these targets in mind:
 - Agent identification, observability (Prometheus + Kubernetes probes), tool definitions (OpenAI/Anthropic), AsyncAPI event specs (17 channels)
 
 **Phase 4 - Production Hardening:** ✅ Complete
-- Docker/Kubernetes deployment, alert delivery (Slack/PagerDuty/webhook), fine-grained authorization (OWASP API1/API3), secrets lifecycle management
+- Docker/Kubernetes deployment, alert delivery (Slack/PagerDuty/webhook), fine-grained authorization (OWASP API1/API3), secrets lifecycle management, SQLite persistence (users/agents/tasks survive restarts)
 
 ## Reference Standards
 
@@ -169,11 +169,20 @@ When implementing features, keep these targets in mind:
 - **Storage:** Distributed (Redis) for production, graceful in-memory fallback
 - **Production:** Multi-server ready with Redis, automatic failover
 
+### Data Persistence
+- **Engine:** SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver)
+- **File:** `./data/platform.db` by default; override with `DATABASE_URL` env var
+- **Tables:** `users`, `agents`, `tasks` — schema defined in `src/db/database.ts`
+- **WAL mode:** Enabled at startup for concurrent read performance
+- **Seeding guard:** Default admin/agent seeded only if table is empty (safe across restarts)
+- **ID counters:** Lazily seeded from `MAX(id)` on first write — no duplicates across restarts
+- **Files:** `src/db/database.ts` (schema + singleton), `src/db/task-store.ts` (CRUD)
+- **Studio:** `npm run db:studio` opens Drizzle Studio for interactive inspection
+
 ### Observability
-- **Metrics Storage:** In-memory time-series (10,000 points, ~1 hour)
+- **Metrics Storage:** In-memory time-series (10,000 points, ~1 hour); lost on restart (intentional — use Prometheus for long-term retention)
 - **Performance:** <5ms API response, ~50KB per 1,000 requests
 - **Dashboard:** Single HTML file, auto-refreshes every 5 seconds
-- **Persistence:** Data lost on restart (add database if long-term storage needed)
 
 ### Gateway Integration
 - **Supported:** Kong, Apigee, AWS API Gateway (HTTP/REST), Azure APIM
@@ -330,12 +339,16 @@ The platform includes enterprise-grade security features (all production-ready, 
 - `SECRETS_PROVIDER` (vault/aws/azure/env)
 - Provider-specific vars (VAULT_ADDR, AWS_REGION, AZURE_KEY_VAULT_URL, etc.)
 
+**Optional - Database:**
+- `DATABASE_URL` - SQLite file path (default: `./data/platform.db`)
+
 **Optional - Alert Delivery:**
 - `SLACK_WEBHOOK_URL` - Slack incoming webhook for alert notifications
 - `PAGERDUTY_ROUTING_KEY` - PagerDuty Events API v2 routing key
 - `ALERT_WEBHOOK_URL` - Generic webhook for custom alert integrations
 
 ### Production Deployment Checklist
+- [ ] Set DATABASE_URL to a durable path (default `./data/platform.db` is fine for single-node)
 - [ ] Change default admin credentials
 - [ ] Set strong JWT_SECRET
 - [ ] Configure TLS certificates (Let's Encrypt recommended)

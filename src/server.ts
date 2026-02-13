@@ -44,6 +44,7 @@ import auditRoutes from './api/audit-routes.js';
 import monitoringRoutes from './api/monitoring-routes.js';
 import secretsRoutes from './api/secrets-routes.js';
 import { getGatewayManager } from './gateway/index.js';
+import { initializeDatabase } from './db/database.js';
 import { initializeDefaultUsers } from './auth/user-store.js';
 import { initializeDefaultAgents } from './auth/agent-store.js';
 import { createHTTPSServer, isTLSEnabled, logTLSStatus } from './config/tls-config.js';
@@ -287,6 +288,9 @@ export async function startServer(): Promise<void> {
   // Initialize monitoring metrics collection
   enableDefaultMetrics();
   startSystemMetricsCollection();
+
+  // Initialize database FIRST (user/agent/task stores depend on it)
+  await initializeDatabase();
 
   // Initialize secrets manager FIRST (before anything that needs secrets)
   try {

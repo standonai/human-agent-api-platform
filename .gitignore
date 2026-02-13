@@ -48,3 +48,6 @@ credentials.json
 logs/
 certs/
 *.pem
+
+# SQLite database
+data/

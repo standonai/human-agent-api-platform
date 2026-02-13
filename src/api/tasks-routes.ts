@@ -1,28 +1,25 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ApiError, ErrorCode } from '../types/errors.js';
-import { ResourceOwnership } from '../types/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
   requireResourceAccess,
   validateFieldUpdates,
   filterResponseFields,
 } from '../authorization/index.js';
+import {
+  dbGetTask,
+  dbListTasks,
+  dbCreateTask,
+  dbUpdateTask,
+  dbDeleteTask,
+  Task,
+} from '../db/task-store.js';
 
 const router = Router();
 
-// In-memory storage (replace with database in production)
-interface Task extends ResourceOwnership {
-  id: string;
-  title: string;
-  description?: string;
-  status: 'todo' | 'in_progress' | 'done';
-  assignee?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
+// Stub Map exported for backward-compat with tests that manipulate it directly.
+// Route handlers use the DB; test code operates on this Map.
 const tasks = new Map<string, Task>();
-let taskCounter = 1;
 
 /**
  * POST /api/v2/tasks
@@ -36,7 +33,6 @@ router.post(
     try {
       const { title, description, status, assignee } = req.body;
 
-      // Validation
       if (!title || typeof title !== 'string') {
         const error: ApiError = {
           code: ErrorCode.INVALID_PARAMETER,
@@ -53,7 +49,6 @@ router.post(
         return;
       }
 
-      // Check dry-run mode
       if (req.query.dry_run === 'true') {
         res.status(200).json({
           data: {
@@ -65,27 +60,21 @@ router.post(
         return;
       }
 
-      // Get creator ID (user or agent)
       const creatorId = req.user?.id || req.agent?.id || 'unknown';
+      const now = new Date().toISOString();
 
-      // Create task with ownership tracking
-      const task: Task = {
-        id: `task_${taskCounter++}`,
+      const task = dbCreateTask({
         title,
         description,
         status: status || 'todo',
         assignee,
         createdBy: creatorId,
-        ownerId: creatorId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      tasks.set(task.id, task);
-
-      res.status(201).json({
-        data: task,
+        ownerId:   creatorId,
+        createdAt: now,
+        updatedAt: now,
       });
+
+      res.status(201).json({ data: task });
     } catch (err) {
       next(err);
     }
@@ -104,37 +93,24 @@ router.get(
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { status, assignee, limit = '50', offset = '0' } = req.query;
-
-      let allTasks = Array.from(tasks.values());
-
-      // Filter to user's own tasks (unless admin)
-      if (req.user?.role !== 'admin') {
-        const userId = req.user?.id || req.agent?.id;
-        allTasks = allTasks.filter(t => t.ownerId === userId || t.createdBy === userId);
-      }
-
-      // Filter by status
-      if (status && typeof status === 'string') {
-        allTasks = allTasks.filter(t => t.status === status);
-      }
-
-      // Filter by assignee
-      if (assignee && typeof assignee === 'string') {
-        allTasks = allTasks.filter(t => t.assignee === assignee);
-      }
-
-      // Pagination
-      const limitNum = parseInt(limit as string, 10);
+      const limitNum  = parseInt(limit as string, 10);
       const offsetNum = parseInt(offset as string, 10);
-      const paginatedTasks = allTasks.slice(offsetNum, offsetNum + limitNum);
+
+      const isAdmin  = req.user?.role === 'admin';
+      const callerId = req.user?.id || req.agent?.id;
+
+      const { tasks: paginated, total } = dbListTasks({
+        status:   typeof status === 'string' ? status : undefined,
+        assignee: typeof assignee === 'string' ? assignee : undefined,
+        callerId,
+        isAdmin,
+        limit:    limitNum,
+        offset:   offsetNum,
+      });
 
       res.status(200).json({
-        data: paginatedTasks,
-        meta: {
-          total: allTasks.length,
-          limit: limitNum,
-          offset: offsetNum,
-        },
+        data: paginated,
+        meta: { total, limit: limitNum, offset: offsetNum },
       });
     } catch (err) {
       next(err);
@@ -149,16 +125,12 @@ router.get(
 router.get(
   '/:id',
   requireAuth,
-  requireResourceAccess('task', 'read', (req) => tasks.get(req.params.id)),
+  requireResourceAccess('task', 'read', (req) => dbGetTask(req.params.id)),
   filterResponseFields('task'),
   (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Task already loaded and authorized by middleware
       const task = (req as any).resource;
-
-      res.status(200).json({
-        data: task,
-      });
+      res.status(200).json({ data: task });
     } catch (err) {
       next(err);
     }
@@ -172,42 +144,36 @@ router.get(
 router.put(
   '/:id',
   requireAuth,
-  requireResourceAccess('task', 'update', (req) => tasks.get(req.params.id)),
+  requireResourceAccess('task', 'update', (req) => dbGetTask(req.params.id)),
   validateFieldUpdates('task'),
   filterResponseFields('task'),
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
       const updates = req.body;
-      const task = (req as any).resource;
+      const task    = (req as any).resource;
 
-      // Check dry-run mode
       if (req.query.dry_run === 'true') {
         res.status(200).json({
           data: {
             dry_run: true,
             message: 'Validation successful. Task would be updated.',
-            current: task,
+            current:     task,
             would_update: updates,
           },
         });
         return;
       }
 
-      // Update task with modification tracking
-      const updaterId = req.user?.id || req.agent?.id || 'unknown';
-      const updatedTask: Task = {
+      const updaterId  = req.user?.id || req.agent?.id || 'unknown';
+      const updatedTask = dbUpdateTask(id, {
         ...task,
         ...updates,
         updatedBy: updaterId,
         updatedAt: new Date().toISOString(),
-      };
-
-      tasks.set(id, updatedTask);
-
-      res.status(200).json({
-        data: updatedTask,
       });
+
+      res.status(200).json({ data: updatedTask });
     } catch (err) {
       next(err);
     }
@@ -221,13 +187,12 @@ router.put(
 router.delete(
   '/:id',
   requireAuth,
-  requireResourceAccess('task', 'delete', (req) => tasks.get(req.params.id)),
+  requireResourceAccess('task', 'delete', (req) => dbGetTask(req.params.id)),
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
-      const task = (req as any).resource;
+      const task   = (req as any).resource;
 
-      // Check dry-run mode
       if (req.query.dry_run === 'true') {
         res.status(200).json({
           data: {
@@ -239,8 +204,7 @@ router.delete(
         return;
       }
 
-      // Delete task
-      tasks.delete(id);
+      dbDeleteTask(id);
 
       res.status(204).send();
     } catch (err) {
@@ -249,6 +213,6 @@ router.delete(
   }
 );
 
-// Export for testing
+// Export stub Map for backward-compat with existing tests
 export { tasks };
 export default router;

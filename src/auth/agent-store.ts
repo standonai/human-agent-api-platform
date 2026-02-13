@@ -1,10 +1,12 @@
 /**
- * Agent Store
+ * Agent Store (SQLite via Drizzle ORM)
  *
- * Manages AI agent registration and API key authentication
+ * All function signatures unchanged — better-sqlite3 is synchronous.
  */
 
 import crypto from 'crypto';
+import { eq, sql } from 'drizzle-orm';
+import { getDb, agentsTable, DbAgent } from '../db/database.js';
 
 /**
  * Agent credentials and metadata
@@ -17,7 +19,7 @@ export interface Agent {
   createdAt: Date;
   lastUsedAt: Date;
   requestCount: number;
-  rateLimitOverride?: number; // Optional custom rate limit
+  rateLimitOverride?: number;
 }
 
 /**
@@ -30,59 +32,80 @@ export interface AgentRegistration {
   createdAt: Date;
 }
 
-/**
- * In-memory agent registry
- * Replace with database in production
- */
-const agents = new Map<string, Agent>();
-let agentCounter = 1;
+// ─── ID counter (lazily seeded from DB) ──────────────────────────────────────
 
-/**
- * Generate cryptographically secure API key
- *
- * Format: agnt_<random-32-bytes>
- * Example: agnt_a7b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7
- */
-function generateApiKey(): string {
-  const randomBytes = crypto.randomBytes(32);
-  const key = randomBytes.toString('hex');
-  return `agnt_${key}`;
+let _agentCounter: number | null = null;
+
+function nextAgentId(): string {
+  if (_agentCounter === null) {
+    const row = getDb()
+      .select({ maxNum: sql<number | null>`MAX(CAST(SUBSTR(id, 7) AS INTEGER))` })
+      .from(agentsTable)
+      .get();
+    _agentCounter = (row?.maxNum ?? 0) + 1;
+  }
+  return `agent_${_agentCounter++}`;
 }
 
-/**
- * Hash API key for storage
- */
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function generateApiKey(): string {
+  return `agnt_${crypto.randomBytes(32).toString('hex')}`;
+}
+
 function hashApiKey(apiKey: string): string {
   return crypto.createHash('sha256').update(apiKey).digest('hex');
 }
+
+function rowToAgent(row: DbAgent): Agent {
+  return {
+    id:               row.id,
+    name:             row.name,
+    apiKeyHash:       row.apiKeyHash,
+    active:           Boolean(row.active),
+    createdAt:        row.createdAt as Date,
+    lastUsedAt:       row.lastUsedAt as Date,
+    requestCount:     row.requestCount,
+    rateLimitOverride: row.rateLimitOverride ?? undefined,
+  };
+}
+
+// ─── Public API (signatures unchanged) ───────────────────────────────────────
 
 /**
  * Register a new agent
  */
 export function registerAgent(name: string, rateLimitOverride?: number): AgentRegistration {
-  // Generate unique API key
-  const apiKey = generateApiKey();
+  const apiKey     = generateApiKey();
   const apiKeyHash = hashApiKey(apiKey);
+  const now        = new Date();
 
-  // Create agent
   const agent: Agent = {
-    id: `agent_${agentCounter++}`,
+    id:               nextAgentId(),
     name,
     apiKeyHash,
-    active: true,
-    createdAt: new Date(),
-    lastUsedAt: new Date(),
-    requestCount: 0,
+    active:           true,
+    createdAt:        now,
+    lastUsedAt:       now,
+    requestCount:     0,
     rateLimitOverride,
   };
 
-  agents.set(agent.id, agent);
+  getDb().insert(agentsTable).values({
+    id:               agent.id,
+    name:             agent.name,
+    apiKeyHash:       agent.apiKeyHash,
+    active:           true,
+    createdAt:        agent.createdAt,
+    lastUsedAt:       agent.lastUsedAt,
+    requestCount:     0,
+    rateLimitOverride: agent.rateLimitOverride ?? null,
+  }).run();
 
-  // Return registration (includes API key ONCE)
   return {
-    id: agent.id,
-    name: agent.name,
-    apiKey, // ⚠️ ONLY returned here, never stored or shown again
+    id:        agent.id,
+    name:      agent.name,
+    apiKey,    // ⚠️ ONLY returned here, never stored or shown again
     createdAt: agent.createdAt,
   };
 }
@@ -91,7 +114,8 @@ export function registerAgent(name: string, rateLimitOverride?: number): AgentRe
  * Find agent by ID
  */
 export function findAgentById(id: string): Agent | undefined {
-  return agents.get(id);
+  const row = getDb().select().from(agentsTable).where(eq(agentsTable.id, id)).get();
+  return row ? rowToAgent(row) : undefined;
 }
 
 /**
@@ -99,88 +123,99 @@ export function findAgentById(id: string): Agent | undefined {
  */
 export function verifyApiKey(apiKey: string): Agent | undefined {
   const hash = hashApiKey(apiKey);
+  const row  = getDb()
+    .select()
+    .from(agentsTable)
+    .where(eq(agentsTable.apiKeyHash, hash))
+    .get();
 
-  // Find agent with matching hash
-  for (const agent of agents.values()) {
-    if (agent.apiKeyHash === hash && agent.active) {
-      return agent;
-    }
-  }
-
-  return undefined;
+  if (!row || !row.active) return undefined;
+  return rowToAgent(row);
 }
 
 /**
- * Update agent last used timestamp
+ * Update agent last used timestamp and increment request count
  */
 export function updateAgentActivity(agentId: string): void {
-  const agent = agents.get(agentId);
-  if (agent) {
-    agent.lastUsedAt = new Date();
-    agent.requestCount++;
-  }
+  getDb()
+    .update(agentsTable)
+    .set({
+      lastUsedAt:   new Date(),
+      requestCount: sql`${agentsTable.requestCount} + 1`,
+    })
+    .where(eq(agentsTable.id, agentId))
+    .run();
 }
 
 /**
  * Deactivate an agent (revoke API key)
  */
 export function deactivateAgent(agentId: string): boolean {
-  const agent = agents.get(agentId);
-  if (agent) {
-    agent.active = false;
-    return true;
-  }
-  return false;
+  const result = getDb()
+    .update(agentsTable)
+    .set({ active: false })
+    .where(eq(agentsTable.id, agentId))
+    .run();
+  return result.changes > 0;
 }
 
 /**
  * Reactivate an agent
  */
 export function reactivateAgent(agentId: string): boolean {
-  const agent = agents.get(agentId);
-  if (agent) {
-    agent.active = true;
-    return true;
-  }
-  return false;
+  const result = getDb()
+    .update(agentsTable)
+    .set({ active: true })
+    .where(eq(agentsTable.id, agentId))
+    .run();
+  return result.changes > 0;
 }
 
 /**
  * Get all agents (admin only)
  */
 export function getAllAgents(): Omit<Agent, 'apiKeyHash'>[] {
-  return Array.from(agents.values()).map(agent => ({
-    id: agent.id,
-    name: agent.name,
-    apiKeyHash: '***hidden***', // Never expose hash
-    active: agent.active,
-    createdAt: agent.createdAt,
-    lastUsedAt: agent.lastUsedAt,
-    requestCount: agent.requestCount,
-    rateLimitOverride: agent.rateLimitOverride,
-  }));
+  return getDb()
+    .select()
+    .from(agentsTable)
+    .all()
+    .map(row => ({
+      id:               row.id,
+      name:             row.name,
+      apiKeyHash:       '***hidden***',
+      active:           Boolean(row.active),
+      createdAt:        row.createdAt as Date,
+      lastUsedAt:       row.lastUsedAt as Date,
+      requestCount:     row.requestCount,
+      rateLimitOverride: row.rateLimitOverride ?? undefined,
+    }));
 }
 
 /**
  * Delete an agent
  */
 export function deleteAgent(agentId: string): boolean {
-  return agents.delete(agentId);
+  const result = getDb().delete(agentsTable).where(eq(agentsTable.id, agentId)).run();
+  return result.changes > 0;
 }
 
 /**
- * Initialize with example agents for testing
+ * Initialize with example agents for testing.
+ * Guarded: skips if any agent already exists.
  */
 export function initializeDefaultAgents(): void {
-  if (agents.size === 0) {
-    // Create example agent for testing
-    // ⚠️ REMOVE IN PRODUCTION
-    const testAgent = registerAgent('test-agent', 1000);
+  const countRow = getDb()
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(agentsTable)
+    .get();
 
-    console.log('🤖 Default agent created for testing:');
-    console.log(`   Agent ID: ${testAgent.id}`);
-    console.log(`   API Key: ${testAgent.apiKey}`);
-    console.log('   ⚠️  Save this API key - it will not be shown again!');
-    console.log('   ⚠️  REMOVE THIS IN PRODUCTION!');
-  }
+  if ((countRow?.count ?? 0) > 0) return;
+
+  const testAgent = registerAgent('test-agent', 1000);
+
+  console.log('🤖 Default agent created for testing:');
+  console.log(`   Agent ID: ${testAgent.id}`);
+  console.log(`   API Key: ${testAgent.apiKey}`);
+  console.log('   ⚠️  Save this API key - it will not be shown again!');
+  console.log('   ⚠️  REMOVE THIS IN PRODUCTION!');
 }
