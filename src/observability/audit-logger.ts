@@ -277,17 +277,97 @@ function getEventSeverity(event: AuditEvent): LogSeverity {
 }
 
 /**
+ * Deduplication: track last alert sent time per alert name
+ */
+const lastAlertSentAt = new Map<string, number>();
+const ALERT_DEDUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Send a JSON payload to a URL. Fires and forgets; never throws.
+ */
+async function sendAlertToChannel(url: string, payload: Record<string, any>): Promise<void> {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      console.error(`Alert delivery failed (${response.status}) to ${url}`);
+    }
+  } catch (err) {
+    console.error(`Alert delivery error to ${url}:`, err instanceof Error ? err.message : err);
+  }
+}
+
+/**
  * Alert security team on critical events
  */
 function alertSecurityTeam(entry: AuditLogEntry): void {
-  // TODO: Implement actual alerting (email, Slack, PagerDuty)
-  console.error('🚨 CRITICAL SECURITY EVENT:', {
+  console.error('CRITICAL SECURITY EVENT:', {
     event: entry.event,
     ip: entry.ip,
     userId: entry.userId,
     path: entry.path,
     timestamp: entry.timestamp,
   });
+
+  const alertKey = entry.event || 'unknown';
+  const now = Date.now();
+  const lastSent = lastAlertSentAt.get(alertKey);
+  if (lastSent && now - lastSent < ALERT_DEDUP_WINDOW_MS) {
+    return;
+  }
+  lastAlertSentAt.set(alertKey, now);
+
+  const summary = `[${entry.severity || 'CRITICAL'}] ${entry.event}: ${entry.error || entry.path || 'Security alert'}`;
+  const timestamp = entry.timestamp || new Date().toISOString();
+
+  // Slack
+  const slackUrl = process.env.SLACK_WEBHOOK_URL;
+  if (slackUrl) {
+    sendAlertToChannel(slackUrl, {
+      text: `\u{1F6A8} ${summary}\nIP: ${entry.ip}\nUser: ${entry.userId || 'N/A'}\nPath: ${entry.path}\nTime: ${timestamp}`,
+    });
+  }
+
+  // PagerDuty
+  const pagerDutyKey = process.env.PAGERDUTY_ROUTING_KEY;
+  if (pagerDutyKey) {
+    sendAlertToChannel('https://events.pagerduty.com/v2/enqueue', {
+      routing_key: pagerDutyKey,
+      event_action: 'trigger',
+      payload: {
+        summary,
+        severity: (entry.severity || 'critical').toLowerCase(),
+        source: 'api-platform',
+        timestamp,
+        custom_details: {
+          event: entry.event,
+          ip: entry.ip,
+          userId: entry.userId,
+          path: entry.path,
+          requestId: entry.requestId,
+        },
+      },
+    });
+  }
+
+  // Generic webhook
+  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
+  if (webhookUrl) {
+    sendAlertToChannel(webhookUrl, {
+      alert: {
+        name: entry.event,
+        severity: entry.severity || 'CRITICAL',
+        description: entry.error || summary,
+        value: entry.metadata?.value,
+        threshold: entry.metadata?.threshold,
+        timestamp,
+      },
+    });
+  }
 }
 
 /**

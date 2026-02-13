@@ -1,0 +1,1333 @@
+asyncapi: 3.0.0
+info:
+  title: Human-Agent API Platform Events
+  version: '2025-01-29'
+  description: |
+    Event-driven channels for the Human-Agent API Platform.
+    Events are emitted internally and can be consumed via audit log files,
+    Prometheus metrics, Redis pub/sub, or webhook HTTP callbacks.
+
+    **Event categories:** authentication, authorization, data access, security, system
+    **Severity levels:** INFO, WARNING, ERROR, CRITICAL
+
+    **For AI Agents:** All event schemas include typed fields with examples.
+    Subscribe to channels relevant to your integration for real-time awareness.
+  contact:
+    name: API Platform Team
+    email: api-support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+defaultContentType: application/json
+
+servers:
+  development:
+    host: localhost:3000
+    protocol: ws
+    description: Development server (in-process events)
+  production:
+    host: api.example.com
+    protocol: wss
+    description: Production server
+  redis:
+    host: localhost:6379
+    protocol: redis
+    description: Redis pub/sub for distributed event delivery
+
+# ==============================================================================
+# Channels
+# ==============================================================================
+channels:
+  # Audit
+  auditEvent:
+    address: audit/event
+    description: |
+      Every API request generates an audit event.
+      Logged to daily rotating files (audit-YYYY-MM-DD.log).
+      Subscribe for full request lifecycle visibility.
+    messages:
+      AuditEvent:
+        $ref: '#/components/messages/AuditEvent'
+    bindings:
+      redis:
+        channel: platform:audit:event
+        method: publish
+      http:
+        method: POST
+        bindingVersion: 0.3.0
+
+  # Auth
+  authLogin:
+    address: auth/login
+    description: Emitted on successful user login. Includes user profile and IP.
+    messages:
+      AuthLoginEvent:
+        $ref: '#/components/messages/AuthLoginEvent'
+    bindings:
+      redis:
+        channel: platform:auth:login
+        method: publish
+
+  authLoginFailed:
+    address: auth/login-failed
+    description: |
+      Emitted on failed login attempt. After 5 failures in 15 minutes
+      from the same IP/email, a brute-force alert is triggered.
+    messages:
+      AuthLoginFailedEvent:
+        $ref: '#/components/messages/AuthLoginFailedEvent'
+    bindings:
+      redis:
+        channel: platform:auth:login-failed
+        method: publish
+
+  authLogout:
+    address: auth/logout
+    description: Emitted when a user logs out.
+    messages:
+      AuthLogoutEvent:
+        $ref: '#/components/messages/AuthLogoutEvent'
+    bindings:
+      redis:
+        channel: platform:auth:logout
+        method: publish
+
+  authTokenRefresh:
+    address: auth/token-refresh
+    description: Emitted when an access token is refreshed via refresh token exchange.
+    messages:
+      TokenRefreshEvent:
+        $ref: '#/components/messages/TokenRefreshEvent'
+    bindings:
+      redis:
+        channel: platform:auth:token-refresh
+        method: publish
+
+  # Rate Limiting
+  rateLimitExceeded:
+    address: rate-limit/exceeded
+    description: |
+      Emitted when a client exceeds their rate limit.
+      Default limits: Human 100 req/min, Agent 500 req/min (per-agent override possible).
+    messages:
+      RateLimitExceededEvent:
+        $ref: '#/components/messages/RateLimitExceededEvent'
+    bindings:
+      redis:
+        channel: platform:rate-limit:exceeded
+        method: publish
+
+  # Agent Lifecycle
+  agentRegistered:
+    address: agents/registered
+    description: Emitted when a new AI agent is registered by an admin.
+    messages:
+      AgentRegisteredEvent:
+        $ref: '#/components/messages/AgentRegisteredEvent'
+    bindings:
+      redis:
+        channel: platform:agents:registered
+        method: publish
+
+  agentDeactivated:
+    address: agents/deactivated
+    description: Emitted when an agent is deactivated (API key revoked).
+    messages:
+      AgentDeactivatedEvent:
+        $ref: '#/components/messages/AgentDeactivatedEvent'
+    bindings:
+      redis:
+        channel: platform:agents:deactivated
+        method: publish
+
+  agentDeleted:
+    address: agents/deleted
+    description: Emitted when an agent is permanently deleted. CRITICAL severity.
+    messages:
+      AgentDeletedEvent:
+        $ref: '#/components/messages/AgentDeletedEvent'
+    bindings:
+      redis:
+        channel: platform:agents:deleted
+        method: publish
+
+  # Secret Lifecycle
+  secretRotated:
+    address: secrets/rotated
+    description: |
+      Emitted when a secret is rotated (automatic or manual).
+      Includes old/new version numbers and rotation strategy.
+    messages:
+      SecretRotatedEvent:
+        $ref: '#/components/messages/SecretRotatedEvent'
+    bindings:
+      redis:
+        channel: platform:secrets:rotated
+        method: publish
+
+  secretExpired:
+    address: secrets/expired
+    description: Emitted when a secret reaches its configured expiration date. ERROR severity.
+    messages:
+      SecretExpiredEvent:
+        $ref: '#/components/messages/SecretExpiredEvent'
+    bindings:
+      redis:
+        channel: platform:secrets:expired
+        method: publish
+
+  secretRotationDue:
+    address: secrets/rotation-due
+    description: Emitted when a secret is overdue for rotation per its schedule.
+    messages:
+      SecretRotationDueEvent:
+        $ref: '#/components/messages/SecretRotationDueEvent'
+    bindings:
+      redis:
+        channel: platform:secrets:rotation-due
+        method: publish
+
+  # Task Domain Events
+  taskCreated:
+    address: tasks/created
+    description: Emitted when a task is created. Includes ownership tracking fields.
+    messages:
+      TaskCreatedEvent:
+        $ref: '#/components/messages/TaskCreatedEvent'
+    bindings:
+      redis:
+        channel: platform:tasks:created
+        method: publish
+
+  taskUpdated:
+    address: tasks/updated
+    description: Emitted when a task is updated. Includes list of changed fields.
+    messages:
+      TaskUpdatedEvent:
+        $ref: '#/components/messages/TaskUpdatedEvent'
+    bindings:
+      redis:
+        channel: platform:tasks:updated
+        method: publish
+
+  taskDeleted:
+    address: tasks/deleted
+    description: Emitted when a task is deleted. WARNING severity.
+    messages:
+      TaskDeletedEvent:
+        $ref: '#/components/messages/TaskDeletedEvent'
+    bindings:
+      redis:
+        channel: platform:tasks:deleted
+        method: publish
+
+  # Security
+  securityAttackDetected:
+    address: security/attack-detected
+    description: |
+      Emitted when a potential attack is detected (SQL injection, XSS,
+      command injection, path traversal). Logged to security log file.
+      CRITICAL severity triggers alertSecurityTeam().
+    messages:
+      AttackDetectedEvent:
+        $ref: '#/components/messages/AttackDetectedEvent'
+    bindings:
+      redis:
+        channel: platform:security:attack-detected
+        method: publish
+      http:
+        method: POST
+        bindingVersion: 0.3.0
+
+  securityUnauthorizedAccess:
+    address: security/unauthorized-access
+    description: Emitted on unauthorized or forbidden access attempts.
+    messages:
+      UnauthorizedAccessEvent:
+        $ref: '#/components/messages/UnauthorizedAccessEvent'
+    bindings:
+      redis:
+        channel: platform:security:unauthorized-access
+        method: publish
+
+# ==============================================================================
+# Operations
+# ==============================================================================
+operations:
+  # Audit
+  publishAuditEvent:
+    action: send
+    channel:
+      $ref: '#/channels/auditEvent'
+    summary: Publish audit event for every API request
+    description: |
+      The platform publishes an audit event for every API request processed.
+      Events are written to rotating log files and optionally broadcast via Redis pub/sub.
+
+  receiveAuditEvent:
+    action: receive
+    channel:
+      $ref: '#/channels/auditEvent'
+    summary: Subscribe to all API request audit events
+    description: |
+      Receive audit events for monitoring, compliance, or analytics.
+      Each event contains full request/response metadata.
+
+  # Auth
+  publishAuthLogin:
+    action: send
+    channel:
+      $ref: '#/channels/authLogin'
+    summary: Publish successful login event
+    description: Emitted by the auth system after successful credential verification.
+
+  receiveAuthLogin:
+    action: receive
+    channel:
+      $ref: '#/channels/authLogin'
+    summary: Subscribe to login events
+    description: Receive notifications when users successfully authenticate.
+
+  publishAuthLoginFailed:
+    action: send
+    channel:
+      $ref: '#/channels/authLoginFailed'
+    summary: Publish failed login event
+    description: Emitted on every failed authentication attempt. Includes brute-force detection flag.
+
+  receiveAuthLoginFailed:
+    action: receive
+    channel:
+      $ref: '#/channels/authLoginFailed'
+    summary: Subscribe to failed login events
+    description: Monitor for brute-force attacks and credential stuffing.
+
+  publishAuthLogout:
+    action: send
+    channel:
+      $ref: '#/channels/authLogout'
+    summary: Publish logout event
+    description: Emitted when a user ends their session.
+
+  receiveAuthLogout:
+    action: receive
+    channel:
+      $ref: '#/channels/authLogout'
+    summary: Subscribe to logout events
+
+  publishTokenRefresh:
+    action: send
+    channel:
+      $ref: '#/channels/authTokenRefresh'
+    summary: Publish token refresh event
+
+  receiveTokenRefresh:
+    action: receive
+    channel:
+      $ref: '#/channels/authTokenRefresh'
+    summary: Subscribe to token refresh events
+
+  # Rate Limit
+  publishRateLimitExceeded:
+    action: send
+    channel:
+      $ref: '#/channels/rateLimitExceeded'
+    summary: Publish rate limit exceeded event
+    description: Emitted when any client (human or agent) exceeds their rate limit allocation.
+
+  receiveRateLimitExceeded:
+    action: receive
+    channel:
+      $ref: '#/channels/rateLimitExceeded'
+    summary: Subscribe to rate limit events
+    description: Monitor which clients are hitting rate limits for capacity planning.
+
+  # Agent Lifecycle
+  publishAgentRegistered:
+    action: send
+    channel:
+      $ref: '#/channels/agentRegistered'
+    summary: Publish agent registration event
+    description: Emitted by the admin API when a new AI agent is registered.
+
+  receiveAgentRegistered:
+    action: receive
+    channel:
+      $ref: '#/channels/agentRegistered'
+    summary: Subscribe to agent registration events
+    description: Track new agent onboarding for provisioning and monitoring.
+
+  publishAgentDeactivated:
+    action: send
+    channel:
+      $ref: '#/channels/agentDeactivated'
+    summary: Publish agent deactivation event
+    description: Emitted when an admin revokes an agent API key.
+
+  receiveAgentDeactivated:
+    action: receive
+    channel:
+      $ref: '#/channels/agentDeactivated'
+    summary: Subscribe to agent deactivation events
+    description: Downstream services should stop accepting requests from deactivated agents.
+
+  publishAgentDeleted:
+    action: send
+    channel:
+      $ref: '#/channels/agentDeleted'
+    summary: Publish agent deletion event
+    description: Emitted when an agent is permanently removed. CRITICAL severity.
+
+  receiveAgentDeleted:
+    action: receive
+    channel:
+      $ref: '#/channels/agentDeleted'
+    summary: Subscribe to agent deletion events
+    description: Clean up any references to the deleted agent in downstream systems.
+
+  # Secret Lifecycle
+  publishSecretRotated:
+    action: send
+    channel:
+      $ref: '#/channels/secretRotated'
+    summary: Publish secret rotation event
+    description: |
+      Emitted after successful rotation. Includes strategy used (immediate, gradual, versioned).
+
+  receiveSecretRotated:
+    action: receive
+    channel:
+      $ref: '#/channels/secretRotated'
+    summary: Subscribe to secret rotation events
+    description: Services should listen for rotation events to reload credentials.
+
+  publishSecretExpired:
+    action: send
+    channel:
+      $ref: '#/channels/secretExpired'
+    summary: Publish secret expiration event
+    description: Emitted when a secret passes its configured expiresAt date. ERROR severity.
+
+  receiveSecretExpired:
+    action: receive
+    channel:
+      $ref: '#/channels/secretExpired'
+    summary: Subscribe to secret expiration events
+    description: Take immediate action when a secret expires to prevent service disruption.
+
+  publishSecretRotationDue:
+    action: send
+    channel:
+      $ref: '#/channels/secretRotationDue'
+    summary: Publish rotation-due notification
+    description: Emitted when a secret is past its scheduled rotation date.
+
+  receiveSecretRotationDue:
+    action: receive
+    channel:
+      $ref: '#/channels/secretRotationDue'
+    summary: Subscribe to rotation-due events
+    description: Proactively rotate secrets before they become a security risk.
+
+  # Task Domain Events
+  publishTaskCreated:
+    action: send
+    channel:
+      $ref: '#/channels/taskCreated'
+    summary: Publish task creation event
+    description: Emitted when a new task is created with automatic ownership tracking.
+
+  receiveTaskCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/taskCreated'
+    summary: Subscribe to task creation events
+    description: Receive notifications when new tasks are created in the system.
+
+  publishTaskUpdated:
+    action: send
+    channel:
+      $ref: '#/channels/taskUpdated'
+    summary: Publish task update event
+    description: Emitted when task fields are modified. Includes changed field list.
+
+  receiveTaskUpdated:
+    action: receive
+    channel:
+      $ref: '#/channels/taskUpdated'
+    summary: Subscribe to task update events
+    description: Track task status changes and field modifications.
+
+  publishTaskDeleted:
+    action: send
+    channel:
+      $ref: '#/channels/taskDeleted'
+    summary: Publish task deletion event
+    description: Emitted when a task is permanently deleted by its owner or an admin.
+
+  receiveTaskDeleted:
+    action: receive
+    channel:
+      $ref: '#/channels/taskDeleted'
+    summary: Subscribe to task deletion events
+    description: Clean up references to deleted tasks in downstream systems.
+
+  # Security
+  publishAttackDetected:
+    action: send
+    channel:
+      $ref: '#/channels/securityAttackDetected'
+    summary: Publish attack detection event
+    description: |
+      Emitted when the input sanitization middleware detects a potential attack.
+      CRITICAL events trigger alertSecurityTeam() for immediate response.
+
+  receiveAttackDetected:
+    action: receive
+    channel:
+      $ref: '#/channels/securityAttackDetected'
+    summary: Subscribe to attack detection events
+    description: |
+      Critical for security monitoring. Integrate with SIEM or alerting systems.
+
+  publishUnauthorizedAccess:
+    action: send
+    channel:
+      $ref: '#/channels/securityUnauthorizedAccess'
+    summary: Publish unauthorized access event
+    description: Emitted when a request is rejected due to missing or insufficient credentials.
+
+  receiveUnauthorizedAccess:
+    action: receive
+    channel:
+      $ref: '#/channels/securityUnauthorizedAccess'
+    summary: Subscribe to unauthorized access events
+    description: Monitor for privilege escalation attempts or misconfigured clients.
+
+# ==============================================================================
+# Components
+# ==============================================================================
+components:
+  messages:
+    # Audit
+    AuditEvent:
+      name: AuditEvent
+      title: API Request Audit Event
+      summary: Comprehensive audit record for any API request
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AuditLogEntry'
+
+    # Auth
+    AuthLoginEvent:
+      name: AuthLoginEvent
+      title: User Login
+      summary: Successful user authentication
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - userId
+          - userEmail
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: USER_LOGIN
+          eventCategory:
+            type: string
+            const: AUTHENTICATION
+          severity:
+            type: string
+            const: INFO
+          userId:
+            type: string
+            example: user_1
+          userEmail:
+            type: string
+            format: email
+            example: alice@example.com
+          userRole:
+            type: string
+            enum: [admin, developer, viewer]
+            example: developer
+          ip:
+            type: string
+            example: 192.168.1.1
+          userAgent:
+            type: string
+            example: Mozilla/5.0
+
+    AuthLoginFailedEvent:
+      name: AuthLoginFailedEvent
+      title: Login Failed
+      summary: Failed login attempt (brute-force detection at 5 failures/15 min)
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - ip
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: USER_LOGIN_FAILED
+          eventCategory:
+            type: string
+            const: AUTHENTICATION
+          severity:
+            type: string
+            const: WARNING
+          ip:
+            type: string
+            example: 192.168.1.1
+          email:
+            type: string
+            description: Email attempted (if provided)
+            example: unknown@attacker.com
+          attemptCount:
+            type: integer
+            description: Number of failed attempts from this IP/email
+            example: 3
+          bruteForceDetected:
+            type: boolean
+            description: True if threshold (5 attempts/15 min) exceeded
+            example: false
+
+    AuthLogoutEvent:
+      name: AuthLogoutEvent
+      title: User Logout
+      summary: User session ended
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - userId
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: USER_LOGOUT
+          eventCategory:
+            type: string
+            const: AUTHENTICATION
+          severity:
+            type: string
+            const: INFO
+          userId:
+            type: string
+            example: user_1
+          ip:
+            type: string
+            example: 192.168.1.1
+
+    TokenRefreshEvent:
+      name: TokenRefreshEvent
+      title: Token Refresh
+      summary: Access token refreshed via refresh token
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - userId
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: TOKEN_REFRESH
+          eventCategory:
+            type: string
+            const: AUTHENTICATION
+          severity:
+            type: string
+            const: INFO
+          userId:
+            type: string
+            example: user_1
+
+    # Rate Limit
+    RateLimitExceededEvent:
+      name: RateLimitExceededEvent
+      title: Rate Limit Exceeded
+      summary: Client exceeded rate limit (100 human / 500 agent req/min)
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - ip
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: RATE_LIMIT_EXCEEDED
+          eventCategory:
+            type: string
+            const: SECURITY
+          severity:
+            type: string
+            const: WARNING
+          ip:
+            type: string
+            example: 192.168.1.1
+          userId:
+            type: string
+            example: user_1
+          agentId:
+            type: string
+            example: agent_abc123
+          path:
+            type: string
+            example: /api/v2/tasks
+          limit:
+            type: integer
+            description: Configured limit (requests per minute)
+            example: 500
+          retryAfter:
+            type: integer
+            description: Seconds until rate limit resets
+            example: 42
+
+    # Agent lifecycle
+    AgentRegisteredEvent:
+      name: AgentRegisteredEvent
+      title: Agent Registered
+      summary: New AI agent registered on the platform
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - agentId
+          - agentName
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: AGENT_REGISTERED
+          eventCategory:
+            type: string
+            const: ADMIN
+          severity:
+            type: string
+            const: INFO
+          agentId:
+            type: string
+            example: agent_abc123
+          agentName:
+            type: string
+            example: production-bot
+          registeredBy:
+            type: string
+            description: Admin user ID who registered the agent
+            example: user_1
+          rateLimitOverride:
+            type: integer
+            description: Custom rate limit if set (requests per minute)
+            example: 1000
+
+    AgentDeactivatedEvent:
+      name: AgentDeactivatedEvent
+      title: Agent Deactivated
+      summary: Agent API key revoked (can be reactivated)
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - agentId
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: AGENT_DEACTIVATED
+          eventCategory:
+            type: string
+            const: ADMIN
+          severity:
+            type: string
+            const: WARNING
+          agentId:
+            type: string
+            example: agent_abc123
+          deactivatedBy:
+            type: string
+            description: Admin user ID
+            example: user_1
+          reason:
+            type: string
+            example: Security review pending
+
+    AgentDeletedEvent:
+      name: AgentDeletedEvent
+      title: Agent Deleted
+      summary: Agent permanently removed (irreversible)
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - agentId
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: AGENT_DELETED
+          eventCategory:
+            type: string
+            const: ADMIN
+          severity:
+            type: string
+            const: CRITICAL
+          agentId:
+            type: string
+            example: agent_abc123
+          deletedBy:
+            type: string
+            example: user_1
+
+    # Secret lifecycle
+    SecretRotatedEvent:
+      name: SecretRotatedEvent
+      title: Secret Rotated
+      summary: Secret rotated (automatic or manual)
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - secretName
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: SECRET_ROTATED
+          eventCategory:
+            type: string
+            const: ADMIN
+          severity:
+            type: string
+            const: INFO
+          secretName:
+            type: string
+            example: jwt-secret
+          previousVersion:
+            type: integer
+            example: 2
+          newVersion:
+            type: integer
+            example: 3
+          strategy:
+            type: string
+            enum: [immediate, gradual, versioned]
+            description: Rotation strategy used (from RotationStrategy enum)
+            example: gradual
+          triggeredBy:
+            type: string
+            enum: [automatic, manual]
+            example: automatic
+          scope:
+            type: object
+            description: Environments and services affected
+            properties:
+              environments:
+                type: array
+                items:
+                  type: string
+                example: [production, staging]
+              services:
+                type: array
+                items:
+                  type: string
+                example: [auth-service]
+
+    SecretExpiredEvent:
+      name: SecretExpiredEvent
+      title: Secret Expired
+      summary: Secret reached its expiration date
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - secretName
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: SECRET_EXPIRED
+          eventCategory:
+            type: string
+            const: SECURITY
+          severity:
+            type: string
+            const: ERROR
+          secretName:
+            type: string
+            example: db-password
+          expiredAt:
+            type: string
+            format: date-time
+            example: '2025-01-30T00:00:00.000Z'
+          version:
+            type: integer
+            example: 1
+          scope:
+            type: object
+            properties:
+              environments:
+                type: array
+                items:
+                  type: string
+                example: [production]
+              services:
+                type: array
+                items:
+                  type: string
+                example: [database]
+
+    SecretRotationDueEvent:
+      name: SecretRotationDueEvent
+      title: Secret Rotation Due
+      summary: Secret is overdue for scheduled rotation
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - secretName
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: SECRET_ROTATION_DUE
+          eventCategory:
+            type: string
+            const: ADMIN
+          severity:
+            type: string
+            const: WARNING
+          secretName:
+            type: string
+            example: api-encryption-key
+          daysOverdue:
+            type: integer
+            description: Days past the scheduled rotation date
+            example: 5
+          scheduledRotation:
+            type: string
+            format: date-time
+            description: When the rotation was originally scheduled
+
+    # Task events
+    TaskCreatedEvent:
+      name: TaskCreatedEvent
+      title: Task Created
+      summary: New task created with ownership tracking
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - taskId
+          - title
+          - createdBy
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: TASK_CREATED
+          eventCategory:
+            type: string
+            const: DATA_ACCESS
+          severity:
+            type: string
+            const: INFO
+          taskId:
+            type: string
+            example: task_1
+          title:
+            type: string
+            example: Implement login page
+          createdBy:
+            type: string
+            description: User or agent ID (ownership tracked per OWASP API1)
+            example: user_1
+          ownerId:
+            type: string
+            description: Primary owner of the task
+            example: user_1
+          assignee:
+            type: string
+            example: user_2
+          status:
+            type: string
+            enum: [todo, in_progress, done]
+            example: todo
+
+    TaskUpdatedEvent:
+      name: TaskUpdatedEvent
+      title: Task Updated
+      summary: Task fields modified (field-level authorization enforced)
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - taskId
+          - updatedBy
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: TASK_UPDATED
+          eventCategory:
+            type: string
+            const: DATA_ACCESS
+          severity:
+            type: string
+            const: INFO
+          taskId:
+            type: string
+            example: task_1
+          updatedBy:
+            type: string
+            example: user_1
+          changedFields:
+            type: array
+            items:
+              type: string
+            description: List of fields that were modified
+            example: [status, assignee]
+          previousStatus:
+            type: string
+            enum: [todo, in_progress, done]
+            example: todo
+          newStatus:
+            type: string
+            enum: [todo, in_progress, done]
+            example: in_progress
+
+    TaskDeletedEvent:
+      name: TaskDeletedEvent
+      title: Task Deleted
+      summary: Task permanently removed (owner or admin only)
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - taskId
+          - deletedBy
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            const: TASK_DELETED
+          eventCategory:
+            type: string
+            const: DATA_ACCESS
+          severity:
+            type: string
+            const: WARNING
+          taskId:
+            type: string
+            example: task_1
+          deletedBy:
+            type: string
+            example: user_1
+          title:
+            type: string
+            description: Title of the deleted task for audit trail
+            example: Implement login page
+
+    # Security events
+    AttackDetectedEvent:
+      name: AttackDetectedEvent
+      title: Attack Detected
+      summary: Potential security attack detected and blocked
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - ip
+          - attackType
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            enum:
+              - INJECTION_ATTEMPT
+              - XSS_ATTEMPT
+              - SQL_INJECTION_ATTEMPT
+              - COMMAND_INJECTION_ATTEMPT
+              - PATH_TRAVERSAL_ATTEMPT
+          eventCategory:
+            type: string
+            const: SECURITY
+          severity:
+            type: string
+            enum: [WARNING, CRITICAL]
+            example: CRITICAL
+          ip:
+            type: string
+            example: 10.0.0.5
+          attackType:
+            type: string
+            enum: [xss, sql_injection, nosql_injection, command_injection, path_traversal]
+            example: sql_injection
+          path:
+            type: string
+            example: /api/v2/users
+          method:
+            type: string
+            example: POST
+          userId:
+            type: string
+          agentId:
+            type: string
+          payload:
+            type: string
+            description: Sanitized snippet of the malicious input
+            example: "'; DROP TABLE users; --"
+          blocked:
+            type: boolean
+            description: Whether the request was blocked
+            example: true
+
+    UnauthorizedAccessEvent:
+      name: UnauthorizedAccessEvent
+      title: Unauthorized Access
+      summary: Unauthorized or forbidden access attempt
+      contentType: application/json
+      payload:
+        type: object
+        required:
+          - timestamp
+          - event
+          - ip
+          - path
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+            example: '2025-01-30T10:00:00.000Z'
+          event:
+            type: string
+            enum:
+              - UNAUTHORIZED_ACCESS
+              - FORBIDDEN_ACCESS
+              - PERMISSION_DENIED
+          eventCategory:
+            type: string
+            const: AUTHORIZATION
+          severity:
+            type: string
+            const: WARNING
+          ip:
+            type: string
+            example: 192.168.1.100
+          path:
+            type: string
+            example: /api/secrets
+          method:
+            type: string
+            example: GET
+          userId:
+            type: string
+          agentId:
+            type: string
+          requiredRole:
+            type: string
+            description: Role required for access
+            example: admin
+          actualRole:
+            type: string
+            description: Role the requester had
+            example: viewer
+
+  schemas:
+    AuditLogEntry:
+      type: object
+      description: |
+        Full audit log entry capturing request lifecycle.
+        Written to logs/audit-YYYY-MM-DD.log as JSON lines.
+        Matches AuditLogEntry interface in src/observability/audit-logger.ts.
+      required:
+        - timestamp
+        - requestId
+        - ip
+        - method
+        - path
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: '2025-01-30T10:00:00.000Z'
+        requestId:
+          type: string
+          example: req_abc123
+        userId:
+          type: string
+          example: user_1
+        userEmail:
+          type: string
+          format: email
+          example: alice@example.com
+        userRole:
+          type: string
+          enum: [admin, developer, viewer]
+          example: developer
+        agentId:
+          type: string
+          example: agent_abc123
+        agentName:
+          type: string
+          example: production-bot
+        ip:
+          type: string
+          example: 192.168.1.1
+        method:
+          type: string
+          enum: [GET, POST, PUT, PATCH, DELETE]
+          example: POST
+        path:
+          type: string
+          example: /api/v2/tasks
+        query:
+          type: object
+          description: Query parameters if present
+        statusCode:
+          type: integer
+          example: 201
+        duration:
+          type: integer
+          description: Request duration in milliseconds
+          example: 45
+        event:
+          type: string
+          description: Audit event type (matches AuditEvent enum)
+          enum:
+            - USER_LOGIN
+            - USER_LOGIN_FAILED
+            - USER_LOGOUT
+            - TOKEN_REFRESH
+            - TOKEN_EXPIRED
+            - USER_CREATED
+            - USER_UPDATED
+            - USER_DELETED
+            - USER_REGISTERED
+            - AGENT_REGISTERED
+            - AGENT_DEACTIVATED
+            - AGENT_REACTIVATED
+            - AGENT_DELETED
+            - AGENT_AUTH_FAILED
+            - UNAUTHORIZED_ACCESS
+            - FORBIDDEN_ACCESS
+            - PERMISSION_DENIED
+            - INJECTION_ATTEMPT
+            - XSS_ATTEMPT
+            - SQL_INJECTION_ATTEMPT
+            - COMMAND_INJECTION_ATTEMPT
+            - PATH_TRAVERSAL_ATTEMPT
+            - RATE_LIMIT_EXCEEDED
+            - DATA_ACCESSED
+            - DATA_CREATED
+            - DATA_UPDATED
+            - DATA_DELETED
+            - SERVER_STARTED
+            - SERVER_STOPPED
+            - CONFIG_CHANGED
+          example: DATA_CREATED
+        eventCategory:
+          type: string
+          description: Event category (matches EventCategory enum)
+          enum:
+            - AUTHENTICATION
+            - AUTHORIZATION
+            - DATA_ACCESS
+            - SECURITY
+            - ADMIN
+            - SYSTEM
+          example: DATA_ACCESS
+        severity:
+          type: string
+          description: Log severity (matches LogSeverity enum)
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+          example: INFO
+        userAgent:
+          type: string
+          example: Mozilla/5.0
+        error:
+          type: string
+          description: Error message if request failed
+        metadata:
+          type: object
+          description: Additional context (arbitrary key-value pairs)
+          additionalProperties: true

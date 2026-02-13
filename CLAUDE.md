@@ -136,23 +136,17 @@ When implementing features, keep these targets in mind:
 
 ## Implementation Phases
 
-**Phase 1 (Weeks 1-4) - Foundation:**
-- Define API design standards and OpenAPI 3.1 templates
-- Set up Spectral linting rules and CI integration
-- Implement standard error envelope schema
-- Add versioning header handling in gateway
+**Phase 1 - Foundation:** ✅ Complete
+- API design standards, OpenAPI 3.1 templates, Spectral linting (18 rules), error envelope, versioning
 
-**Phase 2 (Weeks 5-10) - Retrofit:**
-- Audit and retrofit Tier 1 APIs (top 10 highest-traffic)
-- Generate/validate OpenAPI specs
-- Implement structured error responses
-- Add deprecation header support
+**Phase 2 - Retrofit:** ✅ Complete
+- All endpoints retrofitted, structured error responses, deprecation headers, 100% OpenAPI spec coverage (30+ endpoints)
 
-**Phase 3 (Weeks 8-12) - Agent Enablement:**
-- Implement agent identification mechanism
-- Build observability dashboards
-- Create tool definition files
-- Rewrite documentation for LLM consumption
+**Phase 3 - Agent Enablement:** ✅ Complete
+- Agent identification, observability (Prometheus + Kubernetes probes), tool definitions (OpenAI/Anthropic), AsyncAPI event specs (17 channels)
+
+**Phase 4 - Production Hardening:** ✅ Complete
+- Docker/Kubernetes deployment, alert delivery (Slack/PagerDuty/webhook), fine-grained authorization (OWASP API1/API3), secrets lifecycle management
 
 ## Reference Standards
 
@@ -190,8 +184,23 @@ When implementing features, keep these targets in mind:
 ### OpenAPI Specifications
 - **Validation:** 18 custom Spectral rules enforced in CI
 - **Critical Rule:** All error responses MUST include actionable suggestions
-- **Coverage:** 100% of endpoints (8 routes documented)
+- **Coverage:** 100% of endpoints (30+ routes: auth, users, tasks, agents, audit, secrets, gateway, monitoring, converter)
 - **Tool Generation:** Convert to OpenAI/Anthropic definitions via `/api/tools/*`
+- **File:** `specs/openapi/platform-api.yaml`
+
+### AsyncAPI Specifications
+- **Format:** AsyncAPI 3.0
+- **Channels:** 17 event channels (audit, auth, rate-limit, agents, secrets, tasks, security)
+- **Bindings:** Redis pub/sub + HTTP webhook bindings on every channel
+- **File:** `specs/asyncapi/platform-events.yaml`
+- **Schemas:** Derived from TypeScript types in `src/types/` and `src/observability/audit-logger.ts`
+
+### Containerization & Deployment
+- **Docker:** Multi-stage Dockerfile (node:20-alpine), non-root UID 1001, exposes 3000/3443
+- **Compose:** `docker-compose.yml` — app + Redis + Prometheus (optional `monitoring` profile)
+- **Kubernetes:** `k8s/` — namespace, configmap, secret, deployment (2 replicas, HPA 2-10), service, ingress
+- **Probes:** Liveness `/api/monitoring/health/live`, Readiness `/api/monitoring/health/ready`
+- **Resources:** 100m-500m CPU, 256Mi-512Mi memory per pod
 
 ### Testing Strategy
 - **Test Suite:** 67 tests covering core functionality
@@ -263,6 +272,7 @@ The platform includes enterprise-grade security features (all production-ready, 
 - **Prometheus Metrics:** HTTP requests, auth, rate limiting, business, security, system metrics
 - **Health Checks:** Comprehensive health aggregation, Kubernetes probes (readiness, liveness)
 - **Alert Rules:** 16 pre-configured alert rules (`config/prometheus/alerts.yml`)
+- **Alert Delivery:** Slack (`SLACK_WEBHOOK_URL`), PagerDuty (`PAGERDUTY_ROUTING_KEY`), generic webhook (`ALERT_WEBHOOK_URL`) — all optional, enabled by env var, 5-min dedup
 - **Files:** `src/monitoring/prometheus-exporter.ts`, `src/monitoring/health-checker.ts`, `src/api/monitoring-routes.ts`
 - **Tests:** 10/10 passing
 - **Endpoints:** `/api/monitoring/metrics`, `/api/monitoring/health/*`
@@ -320,6 +330,11 @@ The platform includes enterprise-grade security features (all production-ready, 
 - `SECRETS_PROVIDER` (vault/aws/azure/env)
 - Provider-specific vars (VAULT_ADDR, AWS_REGION, AZURE_KEY_VAULT_URL, etc.)
 
+**Optional - Alert Delivery:**
+- `SLACK_WEBHOOK_URL` - Slack incoming webhook for alert notifications
+- `PAGERDUTY_ROUTING_KEY` - PagerDuty Events API v2 routing key
+- `ALERT_WEBHOOK_URL` - Generic webhook for custom alert integrations
+
 ### Production Deployment Checklist
 - [ ] Change default admin credentials
 - [ ] Set strong JWT_SECRET
@@ -328,26 +343,25 @@ The platform includes enterprise-grade security features (all production-ready, 
 - [ ] Configure secrets provider (Vault/AWS/Azure)
 - [ ] Register secrets for automatic rotation
 - [ ] Set up Prometheus scraping
-- [ ] Configure alert rules and notifications
+- [ ] Configure alert delivery (SLACK_WEBHOOK_URL or PAGERDUTY_ROUTING_KEY)
 - [ ] Review and customize rate limits
 - [ ] Enable audit log retention and rotation
 - [ ] Configure CORS whitelist
 - [ ] Test health check endpoints
+- [ ] Update `k8s/secret.yaml` with real base64-encoded secrets before applying
 
 ### Quick Security Setup (Development)
 ```bash
-# Generate self-signed TLS cert
-./config/tls/generate-certs.sh
+# Option A: Docker Compose (recommended)
+cp .env.example .env          # Edit JWT_SECRET at minimum
+docker compose up             # Starts app + Redis
 
-# Set environment variables
+# Option B: Manual
+./config/tls/generate-certs.sh
 export JWT_SECRET=$(openssl rand -base64 32)
 export SSL_KEY_PATH=config/tls/server.key
 export SSL_CERT_PATH=config/tls/server.crt
-
-# Start with Redis (optional)
-docker run -d -p 6379:6379 redis
-
-# Start server
+docker run -d -p 6379:6379 redis:7-alpine
 npm run dev
 ```
 
@@ -363,8 +377,8 @@ npm run dev
 ✅ PII detection and masking
 ✅ Secret rotation and lifecycle management
 ✅ Multi-provider secrets support
-✅ Prometheus metrics and alerting
-✅ Health checks for all components
+✅ Prometheus metrics and alerting (Slack/PagerDuty/webhook delivery)
+✅ Health checks for all components (Kubernetes probes)
 ✅ CORS protection
 ✅ Security headers (HSTS, CSP, etc.)
 ✅ Request size limits

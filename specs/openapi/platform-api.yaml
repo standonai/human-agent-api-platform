@@ -35,14 +35,29 @@ servers:
 tags:
   - name: health
     description: Health check and monitoring
+  - name: auth
+    description: Authentication (register, login, refresh, logout)
   - name: users
     description: User management operations
+  - name: tasks
+    description: Task management with OWASP authorization
+  - name: agents
+    description: AI agent registration and management (admin only)
+  - name: audit
+    description: Audit log viewing and search (admin only)
+  - name: secrets
+    description: Secret lifecycle management (admin only)
+  - name: gateway
+    description: API gateway sync and status
+  - name: monitoring
+    description: Prometheus metrics and health checks
   - name: converter
     description: OpenAPI to tool definition conversion
-  - name: agent
-    description: Agent-specific endpoints
 
 paths:
+  # ==========================================================================
+  # Health
+  # ==========================================================================
   /health:
     get:
       operationId: getHealth
@@ -82,28 +97,147 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 
-  /api/agents/info:
-    get:
-      operationId: getAgentInfo
-      summary: Get agent information
+  # ==========================================================================
+  # Auth
+  # ==========================================================================
+  /api/auth/register:
+    post:
+      operationId: registerUser
+      summary: Register a new user
       tags:
-        - agent
+        - auth
       description: |
-        Returns information about the detected agent making the request.
-        Useful for debugging agent detection.
+        Create a new user account and receive JWT tokens.
+        Default role is viewer unless specified.
 
       parameters:
         - $ref: '#/components/parameters/API-Version'
         - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              basic:
+                summary: Basic registration
+                value:
+                  email: alice@example.com
+                  password: securePass123
+                  name: Alice Johnson
+              withRole:
+                summary: Registration with role
+                value:
+                  email: bob@example.com
+                  password: securePass456
+                  name: Bob Smith
+                  role: developer
 
       responses:
-        '200':
-          description: Agent information
+        '201':
+          description: User registered successfully
           headers:
             X-Request-ID:
               $ref: '#/components/headers/X-Request-ID'
-            X-Detected-Agent-Type:
-              $ref: '#/components/headers/X-Detected-Agent-Type'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/UserResponse'
+                      accessToken:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIs...
+                      refreshToken:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIs...
+                      expiresIn:
+                        type: integer
+                        example: 3600
+
+        '400':
+          description: Invalid registration data
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: MISSING_REQUIRED_FIELD
+                  message: Email, password, and name are required
+                  details:
+                    - code: MISSING_FIELDS
+                      message: Required fields missing
+                      suggestion: Provide email, password, and name in request body
+                  request_id: req_abc123
+
+        '409':
+          description: User already exists
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: CONFLICT
+                  message: User already exists
+                  target: email
+                  details:
+                    - code: DUPLICATE_EMAIL
+                      message: A user with this email already exists
+                      suggestion: Use a different email or login to existing account
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/auth/login:
+    post:
+      operationId: loginUser
+      summary: Login with email and password
+      tags:
+        - auth
+      description: |
+        Authenticate with email and password to receive JWT tokens.
+        Access token expires in 1 hour, refresh token in 7 days.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              basic:
+                summary: Login
+                value:
+                  email: alice@example.com
+                  password: securePass123
+
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
             X-RateLimit-Limit:
               $ref: '#/components/headers/X-RateLimit-Limit'
             X-RateLimit-Remaining:
@@ -113,35 +247,257 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                  agent:
+                  data:
                     type: object
                     properties:
-                      type:
+                      user:
+                        $ref: '#/components/schemas/UserResponse'
+                      accessToken:
                         type: string
-                        enum: [human, openai, anthropic, custom]
-                      id:
+                        example: eyJhbGciOiJIUzI1NiIs...
+                      refreshToken:
                         type: string
-                      userAgent:
-                        type: string
-                  request:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                      version:
-                        type: string
-                      timestamp:
-                        type: string
-                        format: date-time
+                        example: eyJhbGciOiJIUzI1NiIs...
+                      expiresIn:
+                        type: integer
+                        example: 3600
 
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Missing credentials
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: MISSING_REQUIRED_FIELD
+                  message: Email and password are required
+                  details:
+                    - code: MISSING_CREDENTIALS
+                      message: Both email and password must be provided
+                      suggestion: Include email and password in request body
+                  request_id: req_abc123
+
+        '401':
+          description: Invalid credentials
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: UNAUTHORIZED
+                  message: Invalid credentials
+                  details:
+                    - code: INVALID_CREDENTIALS
+                      message: Email or password is incorrect
+                      suggestion: Check your email and password and try again
+                  request_id: req_abc123
 
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 
+  /api/auth/refresh:
+    post:
+      operationId: refreshToken
+      summary: Refresh access token
+      tags:
+        - auth
+      description: |
+        Exchange a valid refresh token for a new token pair.
+        Use when access token expires.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            examples:
+              basic:
+                summary: Refresh token
+                value:
+                  refreshToken: eyJhbGciOiJIUzI1NiIs...
+
+      responses:
+        '200':
+          description: Token refreshed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIs...
+                      refreshToken:
+                        type: string
+                        example: eyJhbGciOiJIUzI1NiIs...
+                      expiresIn:
+                        type: integer
+                        example: 3600
+
+        '400':
+          description: Missing refresh token
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: MISSING_REQUIRED_FIELD
+                  message: Refresh token is required
+                  target: refreshToken
+                  details:
+                    - code: MISSING_REFRESH_TOKEN
+                      message: No refresh token provided
+                      suggestion: Include refreshToken in request body
+                  request_id: req_abc123
+
+        '401':
+          description: Invalid or expired refresh token
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: UNAUTHORIZED
+                  message: Invalid refresh token
+                  target: refreshToken
+                  details:
+                    - code: INVALID_REFRESH_TOKEN
+                      message: Refresh token is invalid or malformed
+                      suggestion: Login again to get a valid refresh token
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/auth/me:
+    get:
+      operationId: getCurrentUser
+      summary: Get current authenticated user
+      tags:
+        - auth
+      description: |
+        Returns the profile of the currently authenticated user.
+        Requires a valid Bearer token.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Current user info
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserResponse'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/auth/logout:
+    post:
+      operationId: logoutUser
+      summary: Logout current user
+      tags:
+        - auth
+      description: |
+        Invalidate the current session. Client should delete stored tokens.
+        Stateless JWT - server acknowledges, client is responsible for token cleanup.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      responses:
+        '200':
+          description: Logout acknowledged
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Logged out successfully
+                      suggestion:
+                        type: string
+                        example: Delete your access and refresh tokens from client storage
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # Users
+  # ==========================================================================
   /api/v2/users:
     get:
       operationId: listUsers
@@ -449,6 +805,1932 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 
+  # ==========================================================================
+  # Tasks
+  # ==========================================================================
+  /api/v2/tasks:
+    get:
+      operationId: listTasks
+      summary: List tasks
+      tags:
+        - tasks
+      description: |
+        List tasks with pagination and filtering. Non-admin users see only their own tasks.
+        Requires authentication. Fields filtered by role (OWASP API3).
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - name: status
+          in: query
+          description: Filter by task status
+          required: false
+          schema:
+            type: string
+            enum: [todo, in_progress, done]
+            example: todo
+        - name: assignee
+          in: query
+          description: Filter by assignee ID
+          required: false
+          schema:
+            type: string
+            example: user_1
+        - name: limit
+          in: query
+          description: Maximum number of tasks to return
+          required: false
+          schema:
+            type: integer
+            default: 50
+            example: 20
+        - name: offset
+          in: query
+          description: Number of tasks to skip for pagination
+          required: false
+          schema:
+            type: integer
+            default: 0
+            example: 0
+
+      responses:
+        '200':
+          description: List of tasks
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 15
+                      limit:
+                        type: integer
+                        example: 50
+                      offset:
+                        type: integer
+                        example: 0
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+    post:
+      operationId: createTask
+      summary: Create a new task
+      tags:
+        - tasks
+      description: |
+        Create a task with automatic ownership tracking.
+        Supports dry-run mode for validation.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+            examples:
+              basic:
+                summary: Basic task
+                value:
+                  title: Implement login page
+              full:
+                summary: Task with all fields
+                value:
+                  title: Fix authentication bug
+                  description: Token refresh fails after 6 hours
+                  status: in_progress
+                  assignee: user_2
+
+      responses:
+        '201':
+          description: Task created
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Task'
+
+        '200':
+          description: Dry-run validation passed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DryRunResponse'
+
+        '400':
+          description: Invalid task data
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INVALID_PARAMETER
+                  message: Title is required
+                  target: title
+                  details:
+                    - code: VALIDATION_ERROR
+                      message: Title must be a non-empty string
+                      suggestion: Provide a title between 1-200 characters
+                  request_id: req_abc123
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/v2/tasks/{id}:
+    get:
+      operationId: getTask
+      summary: Get a task by ID
+      tags:
+        - tasks
+      description: |
+        Retrieve a task. Object-level authorization enforced (OWASP API1).
+        Non-admin users can only access tasks they own.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            example: task_1
+
+      responses:
+        '200':
+          description: Task found
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Task'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+    put:
+      operationId: updateTask
+      summary: Update a task
+      tags:
+        - tasks
+      description: |
+        Update a task. Field-level authorization prevents unauthorized property changes (OWASP API3).
+        Supports dry-run mode.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            example: task_1
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+
+      responses:
+        '200':
+          description: Task updated
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Task'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+    delete:
+      operationId: deleteTask
+      summary: Delete a task
+      tags:
+        - tasks
+      description: |
+        Delete a task. Only the owner or admin can delete.
+        Supports dry-run mode.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+        - name: id
+          in: path
+          required: true
+          description: Task ID
+          schema:
+            type: string
+            example: task_1
+
+      responses:
+        '204':
+          description: Task deleted
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+
+        '200':
+          description: Dry-run validation passed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DryRunResponse'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # Agents
+  # ==========================================================================
+  /api/agents:
+    get:
+      operationId: listAgents
+      summary: List all registered agents
+      tags:
+        - agents
+      description: |
+        Returns all registered AI agents. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: List of agents
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Agent'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 3
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/agents/info:
+    get:
+      operationId: getAgentInfo
+      summary: Get agent detection info
+      tags:
+        - agents
+      description: |
+        Returns information about the detected agent making the request.
+        Useful for debugging agent detection.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Agent information
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-Detected-Agent-Type:
+              $ref: '#/components/headers/X-Detected-Agent-Type'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  agent:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: [human, openai, anthropic, custom]
+                      id:
+                        type: string
+                      userAgent:
+                        type: string
+                  request:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      version:
+                        type: string
+                      timestamp:
+                        type: string
+                        format: date-time
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/agents/register:
+    post:
+      operationId: registerAgent
+      summary: Register a new AI agent
+      tags:
+        - agents
+      description: |
+        Register an AI agent and receive an API key. Admin only.
+        Save the API key immediately - it will not be shown again.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterAgentRequest'
+            examples:
+              basic:
+                summary: Basic agent registration
+                value:
+                  name: production-bot
+              withRateLimit:
+                summary: Agent with custom rate limit
+                value:
+                  name: high-volume-agent
+                  rateLimitOverride: 1000
+
+      responses:
+        '201':
+          description: Agent registered (save the API key!)
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AgentWithKey'
+                  warning:
+                    type: string
+                    example: Save the API key - it will not be shown again!
+
+        '400':
+          description: Invalid agent data
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: MISSING_REQUIRED_FIELD
+                  message: Agent name is required
+                  target: name
+                  details:
+                    - code: MISSING_NAME
+                      message: Agent name must be provided
+                      suggestion: Provide a descriptive name for the agent (e.g., "production-bot", "gpt-4-assistant")
+                  request_id: req_abc123
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/agents/{id}:
+    get:
+      operationId: getAgent
+      summary: Get agent details
+      tags:
+        - agents
+      description: |
+        Get details of a specific agent by ID. Admin only.
+        API key hash is hidden in the response.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - name: id
+          in: path
+          required: true
+          description: Agent ID
+          schema:
+            type: string
+            example: agent_abc123
+
+      responses:
+        '200':
+          description: Agent details
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Agent'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          description: Agent not found
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: RESOURCE_NOT_FOUND
+                  message: Agent not found
+                  target: id
+                  details:
+                    - code: AGENT_NOT_FOUND
+                      message: Agent with ID 'agent_xyz' does not exist
+                      suggestion: Check the agent ID or use GET /api/agents to list all agents
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+    delete:
+      operationId: deleteAgent
+      summary: Delete an agent permanently
+      tags:
+        - agents
+      description: |
+        Permanently delete an agent. Admin only. This is irreversible.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+        - name: id
+          in: path
+          required: true
+          description: Agent ID
+          schema:
+            type: string
+            example: agent_abc123
+
+      responses:
+        '204':
+          description: Agent deleted
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          description: Agent not found
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: RESOURCE_NOT_FOUND
+                  message: Agent not found
+                  target: id
+                  details:
+                    - code: AGENT_NOT_FOUND
+                      message: Agent with ID 'agent_xyz' does not exist
+                      suggestion: Check the agent ID or use GET /api/agents to list all agents
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/agents/{id}/deactivate:
+    post:
+      operationId: deactivateAgent
+      summary: Deactivate an agent
+      tags:
+        - agents
+      description: |
+        Revoke an agent's API key without deleting it. Admin only.
+        Agent can be reactivated later.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+        - name: id
+          in: path
+          required: true
+          description: Agent ID
+          schema:
+            type: string
+            example: agent_abc123
+
+      responses:
+        '200':
+          description: Agent deactivated
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Agent deactivated successfully
+                      agentId:
+                        type: string
+                        example: agent_abc123
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          description: Agent not found
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: RESOURCE_NOT_FOUND
+                  message: Agent not found
+                  target: id
+                  details:
+                    - code: AGENT_NOT_FOUND
+                      message: Agent with ID 'agent_xyz' does not exist
+                      suggestion: Check the agent ID or use GET /api/agents to list all agents
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/agents/{id}/reactivate:
+    post:
+      operationId: reactivateAgent
+      summary: Reactivate a deactivated agent
+      tags:
+        - agents
+      description: |
+        Reactivate a previously deactivated agent. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+        - name: id
+          in: path
+          required: true
+          description: Agent ID
+          schema:
+            type: string
+            example: agent_abc123
+
+      responses:
+        '200':
+          description: Agent reactivated
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Agent reactivated successfully
+                      agentId:
+                        type: string
+                        example: agent_abc123
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          description: Agent not found
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: RESOURCE_NOT_FOUND
+                  message: Agent not found
+                  target: id
+                  details:
+                    - code: AGENT_NOT_FOUND
+                      message: Agent with ID 'agent_xyz' does not exist
+                      suggestion: Check the agent ID or use GET /api/agents to list all agents
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # Audit
+  # ==========================================================================
+  /api/audit/stats:
+    get:
+      operationId: getAuditStats
+      summary: Get audit statistics
+      tags:
+        - audit
+      description: |
+        Returns aggregate statistics about audit events. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Audit statistics
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuditStats'
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: '2025-01-30T10:00:00.000Z'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/audit/logs:
+    get:
+      operationId: getAuditLogs
+      summary: Get recent audit logs
+      tags:
+        - audit
+      description: |
+        Read recent audit or security log entries. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - name: limit
+          in: query
+          description: Maximum number of log entries to return
+          required: false
+          schema:
+            type: integer
+            default: 100
+            example: 50
+        - name: type
+          in: query
+          description: Log file type to read
+          required: false
+          schema:
+            type: string
+            enum: [audit, security]
+            default: audit
+            example: audit
+
+      responses:
+        '200':
+          description: Log entries
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLogEntry'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 50
+                      logFile:
+                        type: string
+                        example: audit-2025-01-30.log
+                      limit:
+                        type: integer
+                        example: 100
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/audit/files:
+    get:
+      operationId: listAuditFiles
+      summary: List available log files
+      tags:
+        - audit
+      description: |
+        List all available log files with size and date info. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Available log files
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: audit-2025-01-30.log
+                        size:
+                          type: integer
+                          example: 102400
+                        sizeFormatted:
+                          type: string
+                          example: 100 KB
+                        modified:
+                          type: string
+                          format: date-time
+                          example: '2025-01-30T10:00:00.000Z'
+                        created:
+                          type: string
+                          format: date-time
+                          example: '2025-01-30T00:00:00.000Z'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 5
+                      totalSize:
+                        type: integer
+                        example: 512000
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/audit/search:
+    get:
+      operationId: searchAuditLogs
+      summary: Search audit logs
+      tags:
+        - audit
+      description: |
+        Search audit logs by user, agent, event type, or IP. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - name: userId
+          in: query
+          description: Filter by user ID
+          required: false
+          schema:
+            type: string
+            example: user_1
+        - name: agentId
+          in: query
+          description: Filter by agent ID
+          required: false
+          schema:
+            type: string
+            example: agent_abc123
+        - name: event
+          in: query
+          description: Filter by audit event type
+          required: false
+          schema:
+            type: string
+            example: USER_LOGIN
+        - name: ip
+          in: query
+          description: Filter by source IP address
+          required: false
+          schema:
+            type: string
+            example: 192.168.1.1
+        - name: limit
+          in: query
+          description: Maximum number of results
+          required: false
+          schema:
+            type: integer
+            default: 100
+            example: 50
+
+      responses:
+        '200':
+          description: Matching log entries
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLogEntry'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 12
+                      filters:
+                        type: object
+                        properties:
+                          userId:
+                            type: string
+                          agentId:
+                            type: string
+                          event:
+                            type: string
+                          ip:
+                            type: string
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # Secrets
+  # ==========================================================================
+  /api/secrets:
+    get:
+      operationId: listSecrets
+      summary: List all registered secrets
+      tags:
+        - secrets
+      description: |
+        List all secrets with lifecycle metadata. Admin only.
+        Sensitive values are never returned.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - name: environment
+          in: query
+          description: Filter by environment
+          required: false
+          schema:
+            type: string
+            example: production
+        - name: service
+          in: query
+          description: Filter by service
+          required: false
+          schema:
+            type: string
+            example: auth-service
+        - name: needsRotation
+          in: query
+          description: Show only secrets needing rotation
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+            example: 'true'
+        - name: expired
+          in: query
+          description: Show only expired secrets
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+            example: 'false'
+
+      responses:
+        '200':
+          description: List of secrets metadata
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SecretMetadata'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 5
+                      needsRotation:
+                        type: integer
+                        example: 1
+                      expired:
+                        type: integer
+                        example: 0
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/secrets/status/overview:
+    get:
+      operationId: getSecretsOverview
+      summary: Get secrets status overview
+      tags:
+        - secrets
+      description: |
+        Aggregate overview of all secrets: counts, rotation status, upcoming rotations. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Secrets overview
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        example: 10
+                      needsRotation:
+                        type: integer
+                        example: 2
+                      expired:
+                        type: integer
+                        example: 0
+                      rotationEnabled:
+                        type: integer
+                        example: 8
+                      byEnvironment:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                        example:
+                          production: 5
+                          staging: 3
+                      byService:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                        example:
+                          auth-service: 3
+                          api-gateway: 2
+                      upcomingRotations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                              example: jwt-secret
+                            nextRotation:
+                              type: string
+                              format: date-time
+                            daysUntilRotation:
+                              type: integer
+                              example: 15
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/secrets/{name}:
+    get:
+      operationId: getSecretMetadata
+      summary: Get secret metadata
+      tags:
+        - secrets
+      description: |
+        Get lifecycle metadata for a specific secret. Admin only.
+        The actual secret value is never returned.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - name: name
+          in: path
+          required: true
+          description: Secret name
+          schema:
+            type: string
+            example: jwt-secret
+
+      responses:
+        '200':
+          description: Secret metadata
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SecretMetadata'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '404':
+          description: Secret not found
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: RESOURCE_NOT_FOUND
+                  message: Secret jwt-secret not found
+                  details:
+                    - code: NOT_FOUND
+                      message: The requested secret does not exist
+                      suggestion: Check the secret name or use GET /api/secrets to list all secrets
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/secrets/{name}/rotate:
+    post:
+      operationId: rotateSecret
+      summary: Manually rotate a secret
+      tags:
+        - secrets
+      description: |
+        Trigger immediate rotation of a secret. Admin only.
+        Use force=true to override rotation schedule.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+        - name: name
+          in: path
+          required: true
+          description: Secret name to rotate
+          schema:
+            type: string
+            example: jwt-secret
+
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  description: Force rotation even if not due
+                  default: false
+                  example: true
+
+      responses:
+        '200':
+          description: Secret rotated
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+                      previousVersion:
+                        type: integer
+                        example: 1
+                      newVersion:
+                        type: integer
+                        example: 2
+                  message:
+                    type: string
+                    example: Secret jwt-secret rotated successfully
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+        '500':
+          description: Rotation failed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INTERNAL_SERVER_ERROR
+                  message: Secret rotation failed
+                  details:
+                    - code: ROTATION_ERROR
+                      message: Unable to rotate secret
+                      suggestion: Check the rotation strategy configuration and provider connectivity
+                  request_id: req_abc123
+
+  /api/secrets/{name}/register:
+    post:
+      operationId: registerSecret
+      summary: Register a secret for lifecycle management
+      tags:
+        - secrets
+      description: |
+        Register a secret to enable rotation scheduling and lifecycle tracking. Admin only.
+      security:
+        - BearerAuth: []
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+        - name: name
+          in: path
+          required: true
+          description: Secret name to register
+          schema:
+            type: string
+            example: db-password
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterSecretRequest'
+            examples:
+              basic:
+                summary: Register with rotation
+                value:
+                  rotationSchedule:
+                    enabled: true
+                    intervalDays: 30
+                    strategy: database
+                  scope:
+                    environments: [production]
+                    services: [auth-service]
+                    roles: [admin]
+                  tags:
+                    team: platform
+
+      responses:
+        '201':
+          description: Secret registered
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Secret db-password registered successfully
+                  data:
+                    $ref: '#/components/schemas/SecretMetadata'
+
+        '400':
+          description: Invalid registration data
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INVALID_PARAMETER
+                  message: Invalid rotation schedule configuration
+                  details:
+                    - code: VALIDATION_ERROR
+                      message: intervalDays must be a positive number
+                      suggestion: Set intervalDays to 30, 60, or 90 for standard rotation intervals
+                  request_id: req_abc123
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # Gateway
+  # ==========================================================================
+  /api/gateway/status:
+    get:
+      operationId: getGatewayStatus
+      summary: Get gateway connection status
+      tags:
+        - gateway
+      description: |
+        Returns the health and configuration status of connected API gateways.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Gateway status
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                        example: kong
+                      connected:
+                        type: boolean
+                        example: true
+                      lastSync:
+                        type: string
+                        format: date-time
+                  meta:
+                    type: object
+                    properties:
+                      timestamp:
+                        type: string
+                        format: date-time
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/gateway/sync:
+    post:
+      operationId: syncGateway
+      summary: Sync OpenAPI spec to gateway
+      tags:
+        - gateway
+      description: |
+        Manually trigger synchronization of the OpenAPI spec to the configured gateway.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      responses:
+        '200':
+          description: Sync successful
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+                      routesSynced:
+                        type: integer
+                        example: 8
+                  message:
+                    type: string
+                    example: OpenAPI spec synced successfully
+
+        '400':
+          description: Gateway not configured
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INVALID_PARAMETER
+                  message: Gateway is not configured
+                  details:
+                    - code: MISSING_CONFIGURATION
+                      message: No gateway provider configured
+                      suggestion: Set GATEWAY_PROVIDER environment variable to kong or apigee
+                  request_id: req_abc123
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+        '500':
+          description: Sync failed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INTERNAL_SERVER_ERROR
+                  message: Failed to sync OpenAPI spec
+                  details:
+                    - code: SYNC_ERROR
+                      message: Connection refused to gateway at kong:8001
+                      suggestion: Check gateway configuration and connectivity
+                  request_id: req_abc123
+
+  # ==========================================================================
+  # Monitoring
+  # ==========================================================================
+  /api/monitoring/metrics:
+    get:
+      operationId: getPrometheusMetrics
+      summary: Prometheus metrics endpoint
+      tags:
+        - monitoring
+      description: |
+        Returns all metrics in Prometheus text exposition format.
+        Use for Prometheus scraping.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Prometheus metrics
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP http_requests_total Total HTTP requests
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",status="200"} 1234
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+        '500':
+          description: Metrics collection failed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: INTERNAL_SERVER_ERROR
+                  message: Failed to retrieve metrics
+                  details:
+                    - code: COLLECTION_ERROR
+                      message: Metrics registry unavailable
+                      suggestion: Check that the Prometheus exporter is initialized correctly
+                  request_id: req_abc123
+
+  /api/monitoring/health:
+    get:
+      operationId: getHealthDetailed
+      summary: Comprehensive health check
+      tags:
+        - monitoring
+      description: |
+        Returns detailed health status of all platform components.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Service healthy or degraded
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+        '503':
+          description: Service unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+
+  /api/monitoring/health/ready:
+    get:
+      operationId: getReadinessProbe
+      summary: Kubernetes readiness probe
+      tags:
+        - monitoring
+      description: |
+        Returns 200 if service is ready to accept traffic, 503 otherwise.
+        Use as Kubernetes readiness probe.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Service ready
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+                    example: ready
+                  timestamp:
+                    type: string
+                    format: date-time
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+        '503':
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [not_ready]
+                    example: not_ready
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /api/monitoring/health/live:
+    get:
+      operationId: getLivenessProbe
+      summary: Kubernetes liveness probe
+      tags:
+        - monitoring
+      description: |
+        Returns 200 if the process is alive, 503 if it should be restarted.
+        Use as Kubernetes liveness probe.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Process alive
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [alive]
+                    example: alive
+                  timestamp:
+                    type: string
+                    format: date-time
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+        '503':
+          description: Process should be restarted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [dead]
+                    example: dead
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ==========================================================================
+  # Converter
+  # ==========================================================================
   /api/convert:
     post:
       operationId: convertOpenAPI
@@ -481,7 +2763,7 @@ paths:
                   description: OpenAPI 3.x specification object
                 format:
                   type: string
-                  enum: [openai, anthropic, both]
+                  enum: [openai, anthropic, both, generic]
                   default: both
                   description: Output format for tool definitions
                 filter:
@@ -540,7 +2822,159 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 
+  /api/convert/validate:
+    post:
+      operationId: validateOpenAPI
+      summary: Validate an OpenAPI spec
+      tags:
+        - converter
+      description: |
+        Validate an OpenAPI specification without converting it.
+        Returns issues and a list of detected operations.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+        - $ref: '#/components/parameters/DryRun'
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - spec
+              properties:
+                spec:
+                  type: object
+                  description: OpenAPI specification to validate
+
+      responses:
+        '200':
+          description: Validation result
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                    example: true
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        severity:
+                          type: string
+                          enum: [error, warning]
+                        message:
+                          type: string
+                        path:
+                          type: string
+                  operationsCount:
+                    type: integer
+                    example: 5
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        method:
+                          type: string
+                        path:
+                          type: string
+                        description:
+                          type: string
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/convert/info:
+    get:
+      operationId: getConverterInfo
+      summary: Get converter capabilities
+      tags:
+        - converter
+      description: |
+        Returns information about the OpenAPI-to-tool converter,
+        including supported formats and features.
+
+      parameters:
+        - $ref: '#/components/parameters/API-Version'
+        - $ref: '#/components/parameters/X-Agent-ID'
+
+      responses:
+        '200':
+          description: Converter information
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: OpenAPI to AI Agent Tool Converter
+                  version:
+                    type: string
+                    example: 1.0.0
+                  supportedFormats:
+                    type: array
+                    items:
+                      type: string
+                    example: [openai, anthropic, generic]
+                  supportedOpenAPIVersions:
+                    type: array
+                    items:
+                      type: string
+                    example: ['3.0.x', '3.1.x']
+                  features:
+                    type: array
+                    items:
+                      type: string
+                  filters:
+                    type: object
+                    properties:
+                      tags:
+                        type: string
+                      methods:
+                        type: string
+                      paths:
+                        type: string
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+# ==============================================================================
+# Components
+# ==============================================================================
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /api/auth/login
+
   parameters:
     API-Version:
       name: API-Version
@@ -617,6 +3051,93 @@ components:
         example: 42
 
   schemas:
+    # Auth schemas
+    RegisterRequest:
+      type: object
+      description: User registration request
+      required:
+        - email
+        - password
+        - name
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address (must be unique)
+          example: alice@example.com
+        password:
+          type: string
+          minLength: 8
+          description: Password (minimum 8 characters)
+          example: securePass123
+        name:
+          type: string
+          description: Full name
+          example: Alice Johnson
+        role:
+          type: string
+          enum: [admin, developer, viewer]
+          default: viewer
+          description: User role (defaults to viewer)
+          example: developer
+
+    LoginRequest:
+      type: object
+      description: Login credentials
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Registered email address
+          example: alice@example.com
+        password:
+          type: string
+          description: Account password
+          example: securePass123
+
+    RefreshTokenRequest:
+      type: object
+      description: Refresh token exchange request
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: Valid refresh token from login or previous refresh
+          example: eyJhbGciOiJIUzI1NiIs...
+
+    UserResponse:
+      type: object
+      description: User profile (no sensitive fields)
+      properties:
+        id:
+          type: string
+          example: user_1
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        name:
+          type: string
+          example: Alice Johnson
+        role:
+          type: string
+          enum: [admin, developer, viewer]
+          example: developer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+
+    # User schemas
     User:
       type: object
       description: User entity with core profile information
@@ -695,6 +3216,382 @@ components:
           description: User's age
           example: 28
 
+    # Task schemas
+    Task:
+      type: object
+      description: Task entity with ownership tracking
+      required:
+        - id
+        - title
+        - status
+        - createdBy
+        - ownerId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          example: task_1
+        title:
+          type: string
+          example: Implement login page
+        description:
+          type: string
+          example: Build the login page with email/password form
+        status:
+          type: string
+          enum: [todo, in_progress, done]
+          example: todo
+        assignee:
+          type: string
+          example: user_2
+        createdBy:
+          type: string
+          description: User/agent ID that created this task
+          example: user_1
+        ownerId:
+          type: string
+          description: Primary owner of this task
+          example: user_1
+        updatedBy:
+          type: string
+          description: Last modifier
+          example: user_1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      description: Request body for creating a task
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          description: Task title (1-200 characters)
+          example: Implement login page
+        description:
+          type: string
+          description: Detailed task description
+          example: Build the login page with email/password form
+        status:
+          type: string
+          enum: [todo, in_progress, done]
+          default: todo
+          description: Initial task status
+          example: todo
+        assignee:
+          type: string
+          description: User ID to assign the task to
+          example: user_2
+
+    UpdateTaskRequest:
+      type: object
+      description: Request body for updating a task (all fields optional)
+      properties:
+        title:
+          type: string
+          description: Task title
+          example: Updated task title
+        description:
+          type: string
+          description: Task description
+          example: Updated description
+        status:
+          type: string
+          enum: [todo, in_progress, done]
+          description: Task status
+          example: in_progress
+        assignee:
+          type: string
+          description: Assignee user ID
+          example: user_3
+
+    # Agent schemas
+    Agent:
+      type: object
+      description: Registered AI agent (API key hash hidden)
+      properties:
+        id:
+          type: string
+          example: agent_abc123
+        name:
+          type: string
+          example: production-bot
+        apiKeyHash:
+          type: string
+          example: '***hidden***'
+        active:
+          type: boolean
+          example: true
+        rateLimitOverride:
+          type: integer
+          example: 1000
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+
+    AgentWithKey:
+      type: object
+      description: Agent with plaintext API key (only returned on registration)
+      properties:
+        id:
+          type: string
+          example: agent_abc123
+        name:
+          type: string
+          example: production-bot
+        apiKey:
+          type: string
+          description: Plaintext API key (save immediately, shown only once)
+          example: ak_abc123def456...
+        active:
+          type: boolean
+          example: true
+        rateLimitOverride:
+          type: integer
+          example: 1000
+        createdAt:
+          type: string
+          format: date-time
+
+    RegisterAgentRequest:
+      type: object
+      description: Request body for registering an AI agent
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Descriptive name for the agent
+          example: production-bot
+        rateLimitOverride:
+          type: integer
+          minimum: 0
+          description: Custom rate limit (requests per minute). Omit for default (500).
+          example: 1000
+
+    # Audit schemas
+    AuditStats:
+      type: object
+      description: Aggregate audit statistics
+      properties:
+        totalEvents:
+          type: integer
+          example: 1234
+        securityEvents:
+          type: integer
+          example: 12
+        failedLogins:
+          type: integer
+          example: 3
+        activeUsers:
+          type: integer
+          example: 25
+        activeAgents:
+          type: integer
+          example: 5
+
+    AuditLogEntry:
+      type: object
+      description: A single audit log entry
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        requestId:
+          type: string
+          example: req_abc123
+        userId:
+          type: string
+        userEmail:
+          type: string
+        userRole:
+          type: string
+        agentId:
+          type: string
+        agentName:
+          type: string
+        ip:
+          type: string
+          example: 192.168.1.1
+        method:
+          type: string
+          example: POST
+        path:
+          type: string
+          example: /api/auth/login
+        statusCode:
+          type: integer
+          example: 200
+        duration:
+          type: integer
+          description: Request duration in milliseconds
+          example: 45
+        event:
+          type: string
+          example: USER_LOGIN
+        eventCategory:
+          type: string
+          enum: [AUTHENTICATION, AUTHORIZATION, DATA_ACCESS, SECURITY, ADMIN, SYSTEM]
+        severity:
+          type: string
+          enum: [INFO, WARNING, ERROR, CRITICAL]
+
+    # Secret schemas
+    SecretMetadata:
+      type: object
+      description: Secret lifecycle metadata (value never exposed)
+      properties:
+        name:
+          type: string
+          example: jwt-secret
+        version:
+          type: integer
+          example: 3
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        expired:
+          type: boolean
+          example: false
+        needsRotation:
+          type: boolean
+          example: true
+        rotationSchedule:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              example: true
+            intervalDays:
+              type: integer
+              example: 30
+            nextRotation:
+              type: string
+              format: date-time
+            lastRotation:
+              type: string
+              format: date-time
+            strategy:
+              type: string
+              example: database
+        scope:
+          type: object
+          properties:
+            environments:
+              type: array
+              items:
+                type: string
+              example: [production]
+            services:
+              type: array
+              items:
+                type: string
+              example: [auth-service]
+            roles:
+              type: array
+              items:
+                type: string
+              example: [admin]
+        tags:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            team: platform
+
+    RegisterSecretRequest:
+      type: object
+      description: Request body for registering a secret for lifecycle management
+      properties:
+        rotationSchedule:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+              description: Enable automatic rotation
+              example: true
+            intervalDays:
+              type: integer
+              description: Rotation interval in days
+              example: 30
+            strategy:
+              type: string
+              enum: [database, jwt, api-key, oauth, encryption-key]
+              description: Rotation strategy
+              example: database
+        scope:
+          type: object
+          properties:
+            environments:
+              type: array
+              items:
+                type: string
+              description: Environments this secret applies to
+              example: [production, staging]
+            services:
+              type: array
+              items:
+                type: string
+              description: Services that use this secret
+              example: [auth-service]
+            roles:
+              type: array
+              items:
+                type: string
+              description: Roles that can access this secret
+              example: [admin]
+        expiresAt:
+          type: string
+          format: date-time
+          description: Absolute expiration date
+        tags:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value tags for organization
+          example:
+            team: platform
+
+    # Monitoring schemas
+    HealthCheck:
+      type: object
+      description: Comprehensive health check result
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+        components:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [healthy, degraded, unhealthy]
+              latency:
+                type: number
+                description: Component response time in ms
+
+    # Common schemas
     DryRunResponse:
       type: object
       description: Response returned when dry_run mode is enabled
@@ -817,6 +3714,44 @@ components:
                   target: limit
               request_id: req_abc123
 
+    Unauthorized:
+      description: Authentication required
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required
+              details:
+                - code: MISSING_TOKEN
+                  message: No Bearer token provided
+                  suggestion: Include Authorization header with a valid Bearer token from /api/auth/login
+              request_id: req_abc123
+
+    Forbidden:
+      description: Insufficient permissions
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/X-Request-ID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: FORBIDDEN
+              message: Insufficient permissions
+              details:
+                - code: PERMISSION_DENIED
+                  message: Your role does not have access to this resource
+                  suggestion: Contact an admin to request the required permissions
+              request_id: req_abc123
+
     NotFound:
       description: Resource not found
       headers:
@@ -829,12 +3764,12 @@ components:
           example:
             error:
               code: RESOURCE_NOT_FOUND
-              message: User with ID 999 not found
+              message: The requested resource was not found
               target: id
               details:
                 - code: NOT_FOUND
-                  message: The requested user does not exist
-                  suggestion: Check the user ID and try again, or list all users to find the correct ID
+                  message: The requested resource does not exist
+                  suggestion: Check the ID and try again, or list resources to find the correct ID
                   target: id
               request_id: req_abc123
 
