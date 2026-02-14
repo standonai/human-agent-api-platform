@@ -95,7 +95,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 100 tests passing across 13 test files. 5 pre-existing failures in `rate-limiter.test.ts` (4) and `converter-routes.test.ts` (1) are known issues unrelated to core functionality.
+**Test coverage**: 105 tests passing across 13 test files, 0 failures.
 
 ## Environment Variables
 

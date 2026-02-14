@@ -226,6 +226,12 @@ export function sanitizeInput(req: Request, res: Response, next: NextFunction): 
  * Detects and blocks common injection attacks
  */
 export function detectInjectionAttacks(req: Request, res: Response, next: NextFunction): void {
+  // Exempt endpoints that legitimately accept arbitrary structured data (e.g. OpenAPI specs)
+  if (req.path.startsWith('/api/convert')) {
+    next();
+    return;
+  }
+
   // Combine all inputs for analysis
   const allInputs = JSON.stringify({
     body: req.body || {},

@@ -56,17 +56,17 @@ describe('rateLimit', () => {
     expect(headers['X-RateLimit-Reset']).toBeDefined();
   });
 
-  it('should block requests when limit exceeded', () => {
+  it('should block requests when limit exceeded', async () => {
     const middleware = rateLimit({ humanLimit: 2 });
     const req = createRequest();
     const { res } = createResponse();
 
     // First two requests succeed
-    middleware(req, res, next);
-    middleware(req, res, next);
+    await middleware(req, res, next);
+    await middleware(req, res, next);
 
     // Third request should be blocked
-    expect(() => middleware(req, res, next)).toThrow(ApiError);
+    await expect(middleware(req, res, next)).rejects.toThrow(ApiError);
   });
 
   it('should use different limits for agents', () => {
@@ -114,38 +114,31 @@ describe('rateLimit', () => {
     expect(headers['X-RateLimit-Limit']).toBe('1000');
   });
 
-  it('should set Retry-After header when rate limited', () => {
+  it('should set Retry-After header when rate limited', async () => {
     const middleware = rateLimit({ humanLimit: 1 });
     const req = createRequest();
     const { res, headers } = createResponse();
 
-    middleware(req, res, next);
+    await middleware(req, res, next);
+    await middleware(req, res, next).catch(() => {});
 
-    try {
-      middleware(req, res, next);
-    } catch (error) {
-      expect(headers['Retry-After']).toBeDefined();
-      expect(parseInt(headers['Retry-After'])).toBeGreaterThan(0);
-    }
+    expect(headers['Retry-After']).toBeDefined();
+    expect(parseInt(headers['Retry-After'])).toBeGreaterThan(0);
   });
 
-  it('should include actionable error details', () => {
+  it('should include actionable error details', async () => {
     const middleware = rateLimit({ humanLimit: 1 });
     const req = createRequest();
     const { res } = createResponse();
 
-    middleware(req, res, next);
+    await middleware(req, res, next);
 
-    try {
-      middleware(req, res, next);
-      expect.fail('Should have thrown');
-    } catch (error) {
-      expect(error).toBeInstanceOf(ApiError);
-      const apiError = error as ApiError;
-      expect(apiError.statusCode).toBe(429);
-      expect(apiError.details).toBeDefined();
-      expect(apiError.details![0].suggestion).toContain('exponential backoff');
-    }
+    const error = await middleware(req, res, next).catch(e => e);
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.statusCode).toBe(429);
+    expect(apiError.details).toBeDefined();
+    expect(apiError.details![0].suggestion).toContain('exponential backoff');
   });
 
   it('should reset window after expiry', async () => {
@@ -154,20 +147,20 @@ describe('rateLimit', () => {
     const { res } = createResponse();
 
     // Use up the limit
-    middleware(req, res, next);
-    middleware(req, res, next);
+    await middleware(req, res, next);
+    await middleware(req, res, next);
 
     // Should be blocked
-    expect(() => middleware(req, res, next)).toThrow();
+    await expect(middleware(req, res, next)).rejects.toThrow();
 
     // Wait for window to expire
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     // Should work again
-    expect(() => middleware(req, res, next)).not.toThrow();
+    await expect(middleware(req, res, next)).resolves.toBeUndefined();
   });
 
-  it('should track different IPs independently', () => {
+  it('should track different IPs independently', async () => {
     const middleware = rateLimit({ humanLimit: 1 });
 
     const req1 = createRequest({ ip: '1.1.1.1' });
@@ -175,11 +168,11 @@ describe('rateLimit', () => {
     const { res } = createResponse();
 
     // First IP uses its limit
-    middleware(req1, res, next);
-    expect(() => middleware(req1, res, next)).toThrow();
+    await middleware(req1, res, next);
+    await expect(middleware(req1, res, next)).rejects.toThrow();
 
     // Second IP should still work
-    expect(() => middleware(req2, res, next)).not.toThrow();
+    await expect(middleware(req2, res, next)).resolves.toBeUndefined();
   });
 
   it('should work with zero config', () => {
