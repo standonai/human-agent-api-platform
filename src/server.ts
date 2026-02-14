@@ -1,13 +1,12 @@
 /**
- * Reference API Server
- * Demonstrates all middleware and platform standards
+ * API Platform Server
  */
 
 // Load environment variables from .env file
 import { config } from 'dotenv';
 config();
 
-import express, { Request, Response } from 'express';
+import express from 'express';
 import http from 'http';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -17,8 +16,6 @@ import {
   agentTrackingMiddleware,
   errorHandler,
   dryRunMiddleware,
-  asyncHandler,
-  ApiError,
   VersionConfig,
   rateLimit,
   corsMiddleware,
@@ -29,10 +26,8 @@ import {
   sanitizeInput,
   detectInjectionAttacks,
   auditLogMiddleware,
-  httpsRedirect,
 } from './middleware/index.js';
 import { metricsMiddleware } from './observability/index.js';
-import { ErrorCode } from './types/errors.js';
 import converterRoutes from './api/converter-routes.js';
 import usersRoutes from './api/users-routes.js';
 import tasksRoutes from './api/tasks-routes.js';
@@ -44,20 +39,15 @@ import auditRoutes from './api/audit-routes.js';
 import monitoringRoutes from './api/monitoring-routes.js';
 import secretsRoutes from './api/secrets-routes.js';
 import { getGatewayManager } from './gateway/index.js';
-import { initializeDatabase } from './db/database.js';
+import { initializeDatabase, checkpointDatabase } from './db/database.js';
 import { initializeDefaultUsers } from './auth/user-store.js';
 import { initializeDefaultAgents } from './auth/agent-store.js';
-import { createHTTPSServer, isTLSEnabled, logTLSStatus } from './config/tls-config.js';
 import { initializeRedis, logRedisStatus } from './config/redis-config.js';
 import { createSecretsProvider, initializeSecretsManager, logSecretsStatus, getSecretsManager } from './secrets/index.js';
 import { prometheusMiddleware, enableDefaultMetrics, startSystemMetricsCollection } from './monitoring/index.js';
-import { initializeAuthorization } from './authorization/index.js';
 
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// 🔒 Security: HTTPS redirect (production only)
-app.use(httpsRedirect);
 
 // 🔒 Security: Apply security headers FIRST (before any other middleware)
 app.use(securityHeaders);
@@ -107,7 +97,6 @@ app.use(agentTrackingMiddleware);
 app.use(metricsMiddleware); // Collect metrics for observability
 
 // Rate limiting with agent-aware defaults (100 human / 500 agent requests per minute)
-// Optional: customize for premium agents
 app.use(
   rateLimit({
     customLimits: new Map([
@@ -134,145 +123,6 @@ app.use('/api', converterRoutes);          // OpenAPI converter
 app.use('/api/v2/users', usersRoutes);     // User API
 app.use('/api/v2/tasks', tasksRoutes);     // Tasks API
 
-// Example endpoints demonstrating platform standards (legacy)
-
-/**
- * Health check endpoint
- */
-app.get('/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'healthy',
-    version: req.apiVersion,
-    timestamp: new Date().toISOString(),
-  });
-});
-
-/**
- * Example GET endpoint with validation
- */
-app.get(
-  '/api/users',
-  asyncHandler(async (req: Request, res: Response) => {
-    const limit = parseInt(req.query.limit as string) || 20;
-
-    // Validate limit parameter
-    if (limit < 1 || limit > 100) {
-      throw new ApiError(
-        400,
-        ErrorCode.INVALID_PARAMETER,
-        'The limit parameter is out of range',
-        'limit',
-        [
-          {
-            code: 'VALUE_OUT_OF_RANGE',
-            message: 'limit must be between 1 and 100',
-            suggestion: 'Set limit to a value between 1 and 100, or omit it to use the default of 20',
-            target: 'limit',
-          },
-        ]
-      );
-    }
-
-    // Example response
-    res.json({
-      data: [
-        { id: 1, name: 'Alice' },
-        { id: 2, name: 'Bob' },
-      ],
-      meta: {
-        total: 2,
-        limit,
-      },
-    });
-  })
-);
-
-/**
- * Example POST endpoint with dry-run support
- */
-app.post(
-  '/api/users',
-  asyncHandler(async (req: Request, res: Response) => {
-    const { name, email } = req.body;
-
-    // Validation
-    if (!name || typeof name !== 'string') {
-      throw new ApiError(
-        400,
-        ErrorCode.MISSING_REQUIRED_FIELD,
-        'The name field is required',
-        'name',
-        [
-          {
-            code: 'MISSING_FIELD',
-            message: 'name is required',
-            suggestion: 'Add a name field to the request body',
-            target: 'name',
-          },
-        ]
-      );
-    }
-
-    if (!email || typeof email !== 'string' || !email.includes('@')) {
-      throw new ApiError(
-        400,
-        ErrorCode.INVALID_FORMAT,
-        'The email field has an invalid format',
-        'email',
-        [
-          {
-            code: 'INVALID_EMAIL',
-            message: 'email must be a valid email address',
-            suggestion: 'Provide a valid email address in the format user@example.com',
-            target: 'email',
-          },
-        ]
-      );
-    }
-
-    // Handle dry-run mode
-    if (req.isDryRun) {
-      res.json({
-        dry_run: true,
-        validation: 'passed',
-        message: 'User would be created successfully',
-      });
-      return;
-    }
-
-    // Create user (simulated)
-    const user = {
-      id: Math.floor(Math.random() * 1000),
-      name,
-      email,
-      createdAt: new Date().toISOString(),
-    };
-
-    res.status(201).json({ data: user });
-  })
-);
-
-/**
- * Example endpoint that demonstrates agent-specific behavior
- */
-app.get('/api/agents/info', (req: Request, res: Response) => {
-  const agentContext = req.agentContext;
-
-  res.json({
-    message: 'Agent information endpoint',
-    agent: {
-      type: agentContext?.identification.agentType || 'unknown',
-      id: agentContext?.identification.agentId,
-      userAgent: agentContext?.identification.userAgent,
-    },
-    request: {
-      id: req.requestId,
-      version: req.apiVersion,
-      timestamp: agentContext?.timestamp,
-    },
-  });
-});
-
 // Error handler (must be last)
 app.use(
   errorHandler({
@@ -292,25 +142,22 @@ export async function startServer(): Promise<void> {
   // Initialize database FIRST (user/agent/task stores depend on it)
   await initializeDatabase();
 
-  // Initialize secrets manager FIRST (before anything that needs secrets)
+  // Initialize secrets manager (before anything that needs secrets)
   try {
     const provider = await createSecretsProvider();
     await initializeSecretsManager(provider);
-  } catch (error) {
+  } catch {
     console.warn('⚠️  Secrets manager initialization failed (using environment variables)');
   }
 
-  // Initialize authorization system (register policies)
-  await initializeAuthorization();
-
-  // Initialize default users and agents (for testing)
+  // Initialize default users and agents (seeded only if tables are empty)
   await initializeDefaultUsers();
   initializeDefaultAgents();
 
   // Initialize Redis for distributed rate limiting (optional)
   try {
     await initializeRedis();
-  } catch (error) {
+  } catch {
     console.warn('⚠️  Redis initialization failed (using in-memory rate limiting)');
   }
 
@@ -319,109 +166,55 @@ export async function startServer(): Promise<void> {
   if (gatewayManager.isEnabled()) {
     try {
       await gatewayManager.initialize();
-    } catch (error) {
+    } catch {
       console.warn('⚠️  Gateway initialization failed (continuing without gateway)');
     }
   }
 
-  // Determine if TLS is enabled
-  const tlsEnabled = isTLSEnabled();
-  const protocol = tlsEnabled ? 'https' : 'http';
-  const httpsPort = process.env.HTTPS_PORT || 443;
+  const server = http.createServer(app);
 
-  // Create appropriate server
-  let server: http.Server;
+  // Graceful shutdown: checkpoint SQLite WAL before exit
+  const shutdown = async (signal: string) => {
+    console.log(`\n${signal} received — shutting down gracefully`);
+    await checkpointDatabase();
+    server.close(() => process.exit(0));
+  };
 
-  if (tlsEnabled) {
-    // HTTPS server
-    server = createHTTPSServer(app);
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
 
-    // In production, also create HTTP server for redirect
-    if (process.env.NODE_ENV === 'production') {
-      const httpApp = express();
-      httpApp.use(httpsRedirect);
-      http.createServer(httpApp).listen(PORT, () => {
-        console.log(`🔄 HTTP redirect server listening on port ${PORT}`);
-        console.log(`   All traffic redirected to https://`);
-      });
-    }
-  } else {
-    // HTTP server (development)
-    server = http.createServer(app);
-  }
-
-  // Start the server
-  const listenPort = tlsEnabled && process.env.NODE_ENV === 'production' ? httpsPort : PORT;
-
-  server.listen(listenPort, () => {
+  server.listen(PORT, () => {
     console.log(`
 🚀 API Platform Server Started
 
 Environment: ${process.env.NODE_ENV || 'development'}
-Port: ${listenPort}
-Protocol: ${protocol.toUpperCase()}
+Port: ${PORT}
 Default API Version: ${versionConfig.defaultVersion}
 `);
 
-    // Log TLS status
-    console.log('');
-    logTLSStatus();
-
-    // Log Redis status
-    console.log('');
+    // Log configuration status
     logRedisStatus();
-
-    // Log secrets management status
-    console.log('');
     const secretsManager = getSecretsManager();
     logSecretsStatus(secretsManager.getProviderName());
-
-    // Log security configuration
-    console.log('');
     logSecurityHeaders();
-    console.log('');
     logCorsConfig();
 
     console.log(`
+📊 Observability:
+  GET /api/monitoring/metrics      - Prometheus metrics
+  GET /api/monitoring/health/ready - Readiness probe
+  GET /api/monitoring/health/live  - Liveness probe
 
-📊 Observability Dashboard:
-  🌐 ${protocol}://localhost:${listenPort}/dashboard.html
-
-Available Endpoints:
-  GET  /                - Web UI for OpenAPI converter
-  GET  /health          - Health check
-  GET  /api/agents/info - Agent identification info
-
-Observability:
-  GET  /api/metrics        - Get aggregated metrics (legacy)
-  GET  /api/metrics/health - Metrics system health (legacy)
-
-Monitoring (Prometheus):
-  GET  /api/monitoring/metrics      - Prometheus metrics
-  GET  /api/monitoring/health       - Comprehensive health check
-  GET  /api/monitoring/health/ready - Readiness probe (Kubernetes)
-  GET  /api/monitoring/health/live  - Liveness probe (Kubernetes)
-
-Gateway Management:
+Gateway:
   GET  /api/gateway/status - Gateway connection status
   POST /api/gateway/sync   - Manually sync OpenAPI spec
 
-Validated User API (with Zod):
-  GET    /api/v2/users       - List users (validated query params)
-  POST   /api/v2/users       - Create user (validated body, supports ?dry_run=true)
-  GET    /api/v2/users/:id   - Get user by ID
-  PUT    /api/v2/users/:id   - Update user (validated body, supports ?dry_run=true)
-  DELETE /api/v2/users/:id   - Delete user (supports ?dry_run=true)
-
-Converter API:
-  POST /api/convert          - Convert OpenAPI to tools
-  POST /api/convert/validate - Validate OpenAPI spec
-  GET  /api/convert/info     - Converter information
-
-Try it out:
-  curl ${protocol}://localhost:${listenPort}/health
-  curl ${protocol}://localhost:${listenPort}/api/metrics
-  curl -H "X-Agent-ID: my-agent" ${protocol}://localhost:${listenPort}/api/agents/info
+API:
+  GET    /api/v2/users       - List users
+  POST   /api/v2/users       - Create user (supports ?dry_run=true)
+  GET    /api/v2/tasks       - List tasks
+  POST   /api/v2/tasks       - Create task (supports ?dry_run=true)
+  POST   /api/convert        - Convert OpenAPI to tool definitions
     `);
   });
 }

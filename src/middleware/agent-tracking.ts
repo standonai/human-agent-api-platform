@@ -5,6 +5,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { AgentContext, AgentIdentification } from '../types/agent.js';
+import { trackAgentCall } from '../observability/metrics-store.js';
 
 declare global {
   namespace Express {
@@ -77,6 +78,11 @@ export function agentTrackingMiddleware(req: Request, res: Response, next: NextF
   // Add agent identification to response headers for debugging
   if (identification.agentType !== 'human' && identification.agentType) {
     res.setHeader('X-Detected-Agent-Type', identification.agentType);
+  }
+
+  // Track agent calls for zero-shot success rate metric
+  if (identification.agentType !== 'human' && identification.agentId) {
+    trackAgentCall(identification.agentId, req.path);
   }
 
   next();

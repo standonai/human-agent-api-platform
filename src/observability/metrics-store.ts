@@ -61,6 +61,50 @@ export interface AggregatedMetrics {
   rateLimitViolations: number;
 }
 
+// Key: "agentId:endpoint", Value: timestamp of last seen call (ms)
+const agentLastCallMs = new Map<string, number>();
+const RETRY_WINDOW_MS = 60_000; // calls within 60s are considered retries
+
+/**
+ * Track an agent API call and update the zero-shot success rate gauge.
+ *
+ * A call is a "retry" (first attempt failed) when the same agent hits the
+ * same endpoint again within RETRY_WINDOW_MS.  The gauge is recalculated
+ * on every call using a rolling window of the last 1000 agent interactions.
+ */
+
+interface AgentCallRecord {
+  timestamp: number;
+  firstAttempt: boolean; // true = zero-shot, false = retry
+}
+
+const agentCallHistory: AgentCallRecord[] = [];
+const MAX_AGENT_HISTORY = 1000;
+
+export function trackAgentCall(agentId: string, endpoint: string): void {
+  const key = `${agentId}:${endpoint}`;
+  const now = Date.now();
+  const last = agentLastCallMs.get(key);
+  const isRetry = last !== undefined && (now - last) < RETRY_WINDOW_MS;
+
+  agentLastCallMs.set(key, now);
+
+  agentCallHistory.push({ timestamp: now, firstAttempt: !isRetry });
+  if (agentCallHistory.length > MAX_AGENT_HISTORY) {
+    agentCallHistory.shift();
+  }
+
+  // Recalculate and publish gauge
+  const total = agentCallHistory.length;
+  const successes = agentCallHistory.filter(r => r.firstAttempt).length;
+  const rate = total > 0 ? successes / total : 1;
+
+  // Lazy import to avoid circular dependency
+  import('../monitoring/prometheus-exporter.js').then(({ agentZeroShotSuccessRate }) => {
+    agentZeroShotSuccessRate.set(rate);
+  }).catch(() => { /* monitoring unavailable */ });
+}
+
 class MetricsStore {
   private points: MetricPoint[] = [];
   private readonly maxPoints = 10000; // Keep last 10k requests

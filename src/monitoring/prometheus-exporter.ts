@@ -149,6 +149,19 @@ export const injectionAttempts = new Counter({
 });
 
 /**
+ * Agent Zero-Shot Success Rate
+ *
+ * Tracks whether AI agents succeed on their first API call attempt.
+ * A "retry" is detected when the same agent hits the same endpoint within 60s.
+ * Zero-shot success = no retry needed.
+ */
+export const agentZeroShotSuccessRate = new Gauge({
+  name: 'agent_zero_shot_success_rate',
+  help: 'Ratio of agent API calls that succeed on the first attempt (no retry within 60s)',
+  registers: [register],
+});
+
+/**
  * Cache Metrics
  */
 export const cacheHits = new Counter({

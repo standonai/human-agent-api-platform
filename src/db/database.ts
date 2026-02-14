@@ -55,10 +55,22 @@ export type DbTask  = typeof tasksTable.$inferSelect;
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
 let _db: BetterSQLite3Database | null = null;
+let _sqlite: ReturnType<typeof Database> | null = null;
 
 export function getDb(): BetterSQLite3Database {
   if (!_db) throw new Error('Database not initialized. Call initializeDatabase() first.');
   return _db;
+}
+
+/**
+ * Checkpoint the WAL file so the .db file is complete on disk.
+ * Call before process exit to ensure no data is lost.
+ */
+export async function checkpointDatabase(): Promise<void> {
+  if (_sqlite) {
+    _sqlite.pragma('wal_checkpoint(FULL)');
+    console.log('✅ Database WAL checkpoint complete');
+  }
 }
 
 export async function initializeDatabase(): Promise<void> {
@@ -67,7 +79,8 @@ export async function initializeDatabase(): Promise<void> {
   // Ensure parent directory exists
   mkdirSync(dirname(dbPath), { recursive: true });
 
-  const sqlite = new Database(dbPath);
+  _sqlite = new Database(dbPath);
+  const sqlite = _sqlite;
 
   // WAL mode for better concurrent read performance
   sqlite.pragma('journal_mode = WAL');

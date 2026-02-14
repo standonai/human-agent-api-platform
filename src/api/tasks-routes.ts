@@ -1,11 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ApiError, ErrorCode } from '../types/errors.js';
 import { requireAuth } from '../middleware/auth.js';
-import {
-  requireResourceAccess,
-  validateFieldUpdates,
-  filterResponseFields,
-} from '../authorization/index.js';
+import { requireOwnerOrAdmin } from '../middleware/ownership.js';
 import {
   dbGetTask,
   dbListTasks,
@@ -28,7 +24,6 @@ const tasks = new Map<string, Task>();
 router.post(
   '/',
   requireAuth,
-  requireResourceAccess('task', 'create'),
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { title, description, status, assignee } = req.body;
@@ -88,8 +83,6 @@ router.post(
 router.get(
   '/',
   requireAuth,
-  requireResourceAccess('task', 'list'),
-  filterResponseFields('task'),
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { status, assignee, limit = '50', offset = '0' } = req.query;
@@ -125,8 +118,7 @@ router.get(
 router.get(
   '/:id',
   requireAuth,
-  requireResourceAccess('task', 'read', (req) => dbGetTask(req.params.id)),
-  filterResponseFields('task'),
+  requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const task = (req as any).resource;
@@ -144,9 +136,7 @@ router.get(
 router.put(
   '/:id',
   requireAuth,
-  requireResourceAccess('task', 'update', (req) => dbGetTask(req.params.id)),
-  validateFieldUpdates('task'),
-  filterResponseFields('task'),
+  requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
@@ -187,7 +177,7 @@ router.put(
 router.delete(
   '/:id',
   requireAuth,
-  requireResourceAccess('task', 'delete', (req) => dbGetTask(req.params.id)),
+  requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;

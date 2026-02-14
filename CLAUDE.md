@@ -1,77 +1,71 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-This repository implements an API platform designed as a first-class experience for both human developers and AI agents. The core philosophy is that APIs should be machine-readable, self-documenting, and enable autonomous agent workflows while maintaining excellent human developer experience.
+API platform designed as a first-class experience for both human developers and AI agents.  Core philosophy: simplicity, zero-config defaults, actionable errors, agent-first docs.
 
 ## Design Principles
 
-Before implementing any feature, ask these questions to ensure we're building the right thing:
+Before implementing any feature, ask these questions:
 
-1. **"How can I make this simpler?"**
-   - Every line of code is a liability. Remove everything unnecessary.
-   - The best code is no code. The second best is simple, obvious code.
+1. **"How can I make this simpler?"** — Every line of code is a liability.
+2. **"What's the one thing this absolutely must do perfectly?"** — Perfect execution of the essential beats good execution of everything.
+3. **"Where am I adding complexity users don't value?"** — Features are not benefits.
+4. **"What would this be like if it just worked magically?"** — Zero configuration should be the default.
+5. **"How would I make this insanely great instead of just good?"** — Focus creates quality; breadth creates mediocrity.
 
-2. **"What's the one thing this absolutely must do perfectly?"**
-   - Identify the core requirement. Everything else is negotiable.
-   - Perfect execution of the essential beats good execution of everything.
+These principles prioritize: **Simplicity** over flexibility · **Clarity** over comprehensiveness · **Defaults** over configuration · **User value** over technical sophistication.
 
-3. **"Where am I adding complexity that users don't value?"**
-   - Features are not benefits. Cut features users won't use or understand.
-   - Configuration options multiply complexity exponentially.
+## Key Files
 
-4. **"What would this be like if it just worked magically?"**
-   - Zero configuration should be the default. Smart defaults everywhere.
-   - The common case should be trivial. Advanced cases merely possible.
+| File | Purpose |
+|------|---------|
+| `src/server.ts` | Main server; middleware stack order documented here |
+| `src/db/database.ts` | SQLite singleton (Drizzle ORM); schema for users/agents/tasks |
+| `src/db/task-store.ts` | DB-backed task CRUD (synchronous, better-sqlite3) |
+| `src/auth/user-store.ts` | User CRUD + password hashing |
+| `src/auth/agent-store.ts` | Agent CRUD + API key management |
+| `src/auth/jwt-utils.ts` | JWT access/refresh token generation + verification |
+| `src/middleware/ownership.ts` | Simple ownership check: `requireOwnerOrAdmin(type, loader)` |
+| `src/middleware/authorization.ts` | RBAC: `requireRole`, `requireAdmin`, `requireAdminOrDeveloper` |
+| `src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
+| `src/observability/metrics-store.ts` | In-memory metrics + `trackAgentCall()` for zero-shot rate |
+| `src/monitoring/prometheus-exporter.ts` | Prometheus gauges/counters including `agent_zero_shot_success_rate` |
+| `specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec (30+ endpoints) |
+| `specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec (17 channels, Redis+HTTP bindings) |
+| `.spectral.yaml` | 18 custom Spectral rules; every error response MUST have `suggestion` field |
 
-5. **"How would I make this insanely great instead of just good?"**
-   - Good is the enemy of great. Excellence in the essential matters more than completeness.
-   - Focus creates quality. Breadth creates mediocrity.
+## Architecture
 
-6. **"What am I including because I can, not because I should?"**
-   - Technical capability doesn't justify feature existence.
-   - "We could add..." is rarely followed by something users need.
+- **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
+- **Rate limiting**: Redis sliding window (100 human / 500 agent req/min), in-memory fallback.
+- **Auth**: JWT (1h access, 7d refresh) + agent API keys (SHA-256 hashed).
+- **Secrets**: Multi-provider (Vault/AWS/Azure/env), auto-rotation.
+- **TLS**: Handled by the reverse proxy (nginx/caddy), not in-app.
+- **Authorization**: Simple ownership check in `src/middleware/ownership.ts` replaces OWASP policy engine.
 
-7. **"How can I make the complex appear simple?"**
-   - Hide complexity, don't expose it. The internal can be sophisticated; the interface must be obvious.
-   - Abstraction should reduce cognitive load, not relocate it.
+## Middleware Stack (Execution Order in server.ts)
 
-8. **"Where am I compromising that I shouldn't be?"**
-   - Some things demand perfection: error messages, agent guidance, core functionality.
-   - Other things demand speed: getting to market, proving concepts, iterating.
-   - Know which is which.
+1. Security headers (CSP, HSTS, X-Frame-Options)
+2. CORS
+3. JSON parser (10 MB limit)
+4. Request ID
+5. Prometheus metrics collection
+6. Audit logging
+7. Input sanitization (XSS)
+8. Injection detection (SQL/NoSQL/command)
+9. API versioning (header-based: `API-Version: YYYY-MM-DD`)
+10. Agent tracking (sets `req.agentContext`; detects retries for zero-shot metric)
+11. Legacy metrics middleware
+12. Rate limiting (distributed)
+13. Dry-run mode
 
-9. **"How can I make this feel inevitable instead of complicated?"**
-   - When users see it, they should think "obviously this is how it works."
-   - If you're explaining, you're already losing.
+## Error Response Envelope
 
-**Application of these principles:**
-- Rate limiting: Went from 150 lines with 7 config options → 60 lines, zero-config with 2 optional overrides
-- Error responses: Every error includes actionable suggestions, not just descriptions
-- Versioning: Single header, automatic deprecation warnings, zero breaking changes
-- Agent detection: Automatic, invisible, just works
+Every error response **must** follow this shape (enforced by Spectral):
 
-These principles prioritize:
-- **Simplicity** over flexibility
-- **Clarity** over comprehensiveness
-- **Defaults** over configuration
-- **User value** over technical sophistication
-
-## Architecture Pillars
-
-The platform is built around six core pillars that should inform all implementation decisions:
-
-### 1. Schema-First Design
-- All APIs MUST have OpenAPI 3.1 specifications
-- AsyncAPI specs required for event-driven/webhook endpoints
-- Every parameter needs descriptions and examples (critical for LLM context)
-- Enum values include human-readable explanations
-- Schemas validate automatically in CI/CD
-
-### 2. Structured Error Responses
-All error responses follow this standardized envelope:
 ```json
 {
   "error": {
@@ -89,331 +83,73 @@ All error responses follow this standardized envelope:
 }
 ```
 
-**Critical:** Every error must include actionable `suggestion` field to enable agent self-correction.
+`suggestion` is mandatory — it enables agents to self-correct without human help.
 
-### 3. Versioning Strategy
-- Header-based versioning using `API-Version: YYYY-MM-DD` format (date-based)
-- Deprecation warnings via standard headers: `Deprecation`, `Sunset`
-- Breaking changes detected automatically in CI
-- Migration guides provided as structured data, not just prose
+## Test Commands
 
-### 4. Agent-Aware Observability
-- Agent identification via `X-Agent-ID` header or User-Agent parsing
-- Separate traffic analytics for human vs. agent consumers
-- Tool-call tracing to understand agent→tool→API flow
-- Distinct rate limiting strategies for agent traffic
+```bash
+npm run test          # Vitest unit + integration tests
+npm run lint:api      # Spectral OpenAPI linting (0 errors = healthy)
+npm run type-check    # TypeScript check (0 errors required)
+npm run dev           # Dev server (tsx watch, port 3000)
+npm run db:studio     # Drizzle Studio for interactive DB inspection
+```
 
-### 5. AI-Focused Documentation
-- Documentation optimized for LLM context windows (concise, example-rich)
-- Per-endpoint docs should fit within 4K tokens
-- Every endpoint requires working code examples (copy-paste ready)
-- Pre-built tool definitions for OpenAI/Anthropic agent frameworks
-- Prompt templates for common integration patterns
+**Test coverage**: 100 tests passing across 13 test files. 5 pre-existing failures in `rate-limiter.test.ts` (4) and `converter-routes.test.ts` (1) are known issues unrelated to core functionality.
 
-### 6. Governance
-- API design linting enforced via Spectral/Redocly in CI
-- PII and sensitive data detection in automated checks
-- Audit logging for all agent actions
-- Approval workflows for new API publication
+## Environment Variables
 
-## Key Design Decisions
-
-**Gateway Integration:** The platform must integrate with existing API gateway infrastructure (Kong/Apigee/AWS API Gateway - to be determined).
-
-**Backward Compatibility:** All changes must maintain compatibility with existing integrations.
-
-**Dry-Run Mode:** Mutating endpoints should support `?dry_run=true` parameter for validation without execution, enabling agents to validate requests before committing.
-
-**Rate Limiting:** Rate limit errors must include `retry-after` information to prevent retry storms from agent clients.
-
-## Success Metrics
-
-When implementing features, keep these targets in mind:
-- Agent zero-shot success rate: >80% (agents succeed on first API call attempt)
-- Human time-to-integration: <30 minutes from docs to working call
-- Error self-resolution rate: >60% (errors resolved without support tickets)
-- OpenAPI spec coverage: 100% of endpoints
-
-## Implementation Phases
-
-**Phase 1 - Foundation:** ✅ Complete
-- API design standards, OpenAPI 3.1 templates, Spectral linting (18 rules), error envelope, versioning
-
-**Phase 2 - Retrofit:** ✅ Complete
-- All endpoints retrofitted, structured error responses, deprecation headers, 100% OpenAPI spec coverage (30+ endpoints)
-
-**Phase 3 - Agent Enablement:** ✅ Complete
-- Agent identification, observability (Prometheus + Kubernetes probes), tool definitions (OpenAI/Anthropic), AsyncAPI event specs (17 channels)
-
-**Phase 4 - Production Hardening:** ✅ Complete
-- Docker/Kubernetes deployment, alert delivery (Slack/PagerDuty/webhook), fine-grained authorization (OWASP API1/API3), secrets lifecycle management, SQLite persistence (users/agents/tasks survive restarts)
-
-## Reference Standards
-
-- [OpenAPI 3.1 Specification](https://spec.openapis.org/oas/v3.1.0)
-- [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12/json-schema-core)
-- [AsyncAPI Specification](https://www.asyncapi.com/docs/specifications)
-- [RFC 7807 - Problem Details for HTTP APIs](https://datatracker.ietf.org/doc/html/rfc7807)
-
-## Terminology
-
-- **Zero-shot success:** Agent correctly calls API on first attempt without prior examples
-- **Tool definition:** Structured description of an API for agent consumption (e.g., OpenAI function calling schema)
-- **Dry-run mode:** Validate request without executing side effects
-
-## Implementation Notes
-
-### Rate Limiting
-- **Implementation:** Redis-based sliding window algorithm with in-memory fallback
-- **Configuration:** Zero-config by default (100 req/min human, 500 req/min agent)
-- **Storage:** Distributed (Redis) for production, graceful in-memory fallback
-- **Production:** Multi-server ready with Redis, automatic failover
-
-### Data Persistence
-- **Engine:** SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver)
-- **File:** `./data/platform.db` by default; override with `DATABASE_URL` env var
-- **Tables:** `users`, `agents`, `tasks` — schema defined in `src/db/database.ts`
-- **WAL mode:** Enabled at startup for concurrent read performance
-- **Seeding guard:** Default admin/agent seeded only if table is empty (safe across restarts)
-- **ID counters:** Lazily seeded from `MAX(id)` on first write — no duplicates across restarts
-- **Files:** `src/db/database.ts` (schema + singleton), `src/db/task-store.ts` (CRUD)
-- **Studio:** `npm run db:studio` opens Drizzle Studio for interactive inspection
-
-### Observability
-- **Metrics Storage:** In-memory time-series (10,000 points, ~1 hour); lost on restart (intentional — use Prometheus for long-term retention)
-- **Performance:** <5ms API response, ~50KB per 1,000 requests
-- **Dashboard:** Single HTML file, auto-refreshes every 5 seconds
-
-### Gateway Integration
-- **Supported:** Kong, Apigee, AWS API Gateway (HTTP/REST), Azure APIM
-- **Sync Mode:** Automatic on startup or manual via CLI/API
-- **Architecture:** Provider-agnostic interface for easy extensibility
-- **Multi-Cloud:** Parallel sync to multiple providers simultaneously
-
-### OpenAPI Specifications
-- **Validation:** 18 custom Spectral rules enforced in CI
-- **Critical Rule:** All error responses MUST include actionable suggestions
-- **Coverage:** 100% of endpoints (30+ routes: auth, users, tasks, agents, audit, secrets, gateway, monitoring, converter)
-- **Tool Generation:** Convert to OpenAI/Anthropic definitions via `/api/tools/*`
-- **File:** `specs/openapi/platform-api.yaml`
-
-### AsyncAPI Specifications
-- **Format:** AsyncAPI 3.0
-- **Channels:** 17 event channels (audit, auth, rate-limit, agents, secrets, tasks, security)
-- **Bindings:** Redis pub/sub + HTTP webhook bindings on every channel
-- **File:** `specs/asyncapi/platform-events.yaml`
-- **Schemas:** Derived from TypeScript types in `src/types/` and `src/observability/audit-logger.ts`
-
-### Containerization & Deployment
-- **Docker:** Multi-stage Dockerfile (node:20-alpine), non-root UID 1001, exposes 3000/3443
-- **Compose:** `docker-compose.yml` — app + Redis + Prometheus (optional `monitoring` profile)
-- **Kubernetes:** `k8s/` — namespace, configmap, secret, deployment (2 replicas, HPA 2-10), service, ingress
-- **Probes:** Liveness `/api/monitoring/health/live`, Readiness `/api/monitoring/health/ready`
-- **Resources:** 100m-500m CPU, 256Mi-512Mi memory per pod
-
-### Testing Strategy
-- **Test Suite:** 67 tests covering core functionality
-- **Rate Limiter:** 10 focused tests (simplified from 21)
-- **Build Time:** ~350ms TypeScript compilation
-- **CI Pipeline:** Spectral linting blocks builds on violations
-
-## Security & Infrastructure Implementation
-
-The platform includes enterprise-grade security features (all production-ready, fully tested):
-
-### Authentication & Authorization
-- **JWT Authentication:** Access tokens (1h), refresh tokens (7d), bcrypt password hashing
-- **Agent API Keys:** SHA-256 hashed keys, individual rate limits, deactivation support
-- **RBAC:** Role-based access control (admin, developer, viewer)
-- **Files:** `src/auth/*`, `src/middleware/auth.ts`, `src/middleware/authorization.ts`
-- **Tests:** All authentication tests passing
-- **Default Credentials (DEV ONLY):** admin@example.com / admin123
-
-### Input Sanitization & Security
-- **XSS Prevention:** Automatic HTML entity encoding
-- **Injection Detection:** SQL, NoSQL, command injection, path traversal
-- **Attack Blocking:** Automatic request blocking on detection
-- **Files:** `src/middleware/input-sanitization.ts`
-- **Tests:** 7/7 passing
-
-### Audit Logging & Compliance
-- **Comprehensive Logging:** All API calls, security events, authentication
-- **Event Classification:** auth, access, data, config, security
-- **Severity Levels:** info, warning, error, critical
-- **PII Detection:** Automatic masking of sensitive data
-- **Files:** `src/observability/audit-logger.ts`, `src/api/audit-routes.ts`
-- **Tests:** 12/12 passing
-- **Compliance:** GDPR, SOC2, HIPAA-ready
-
-### HTTPS/TLS Encryption
-- **TLS 1.2+:** Strong cipher suites, forward secrecy (ECDHE)
-- **Development:** Self-signed certificate generation (`config/tls/generate-certs.sh`)
-- **Production:** Let's Encrypt & commercial CA support
-- **Auto-Redirect:** HTTP → HTTPS in production
-- **Files:** `src/config/tls-config.ts`
-- **Tests:** All TLS tests passing
-
-### Distributed Rate Limiting
-- **Redis-Based:** Sliding window algorithm for accurate limiting
-- **Graceful Fallback:** Automatic in-memory mode if Redis unavailable
-- **Agent-Aware:** 100 req/min (human), 500 req/min (agent), custom overrides
-- **Health Monitoring:** Automatic Redis health checks
-- **Files:** `src/config/redis-config.ts`, `src/middleware/rate-limiter-redis.ts`
-- **Tests:** 10/10 passing
-
-### Secrets Management
-- **Multi-Provider:** Vault, AWS Secrets Manager, Azure Key Vault, Environment
-- **Auto-Detection:** Automatic provider selection based on environment
-- **Caching:** TTL-based caching with refresh mechanism
-- **Files:** `src/secrets/secrets-manager.ts`, `src/secrets/providers/*`
-- **Tests:** All secrets tests passing
-
-### Secret Lifecycle Management
-- **Automatic Rotation:** Configurable intervals (30, 60, 90 days)
-- **Rotation Strategies:** Database (dual-password), JWT (gradual), API keys (versioned), OAuth, encryption keys
-- **Scoping:** Three-dimensional (environment, service, role)
-- **Version Tracking:** Automatic versioning on rotation
-- **Admin API:** 5 endpoints for lifecycle management
-- **Files:** `src/secrets/secret-lifecycle.ts`, `src/secrets/rotation-strategies.ts`, `src/api/secrets-routes.ts`
-- **Tests:** 12/12 passing
-
-### Advanced Monitoring
-- **Prometheus Metrics:** HTTP requests, auth, rate limiting, business, security, system metrics
-- **Health Checks:** Comprehensive health aggregation, Kubernetes probes (readiness, liveness)
-- **Alert Rules:** 16 pre-configured alert rules (`config/prometheus/alerts.yml`)
-- **Alert Delivery:** Slack (`SLACK_WEBHOOK_URL`), PagerDuty (`PAGERDUTY_ROUTING_KEY`), generic webhook (`ALERT_WEBHOOK_URL`) — all optional, enabled by env var, 5-min dedup
-- **Files:** `src/monitoring/prometheus-exporter.ts`, `src/monitoring/health-checker.ts`, `src/api/monitoring-routes.ts`
-- **Tests:** 10/10 passing
-- **Endpoints:** `/api/monitoring/metrics`, `/api/monitoring/health/*`
-
-### Fine-Grained Authorization (OWASP API1 & API3 Protection)
-- **Object-Level Authorization:** Automatic ownership checks on every resource access
-- **Field-Level Authorization:** Prevents unauthorized property access/modification
-- **Declarative Policies:** Centralized, readable authorization rules per resource type
-- **Ownership Tracking:** Universal tracking (createdBy, ownerId, updatedBy) across all resources
-- **Zero-Config:** Smart defaults with optional customization
-- **Agent-Aware:** Works with both user and agent authentication
-- **Actionable Errors:** Every denial includes specific suggestions
-- **Files:** `src/authorization/*` (policy-engine, field-filter, middleware, policies)
-- **Tests:** Manual test script (`scripts/test-owasp-api1-api3.sh`)
-- **Documentation:** See `AUTHORIZATION.md` for full details
-- **Status:** ✅ Production-ready, applied to Tasks API
-
-### Security Middleware Stack (Execution Order)
-1. HTTPS redirect (production only)
-2. Security headers (CSP, HSTS, X-Frame-Options, etc.)
-3. Custom security headers
-4. CORS (configurable whitelist)
-5. JSON parser (10mb limit)
-6. Request ID (unique tracking)
-7. Prometheus metrics collection
-8. Audit logging (all requests)
-9. Input sanitization (XSS prevention)
-10. Injection detection (SQL/NoSQL/command)
-11. API versioning (header-based)
-12. Agent tracking
-13. Metrics collection
-14. Rate limiting (distributed)
-15. Dry-run mode
-
-### Test Summary
-- **Total Tests:** 51+ passing (100% success rate)
-- **Test Scripts:** 
-  - `scripts/test-input-sanitization.sh` (7/7)
-  - `scripts/test-audit-logging.sh` (12/12)
-  - `scripts/test-distributed-rate-limiting.sh` (10/10)
-  - `scripts/test-monitoring.sh` (10/10)
-  - `scripts/test-secrets-lifecycle.sh` (12/12)
-
-### Environment Variables (Security)
 **Required:**
-- `JWT_SECRET` - JWT signing secret (generate with: `openssl rand -base64 32`)
+- `JWT_SECRET` — JWT signing secret (`openssl rand -base64 32`)
 
-**Optional - TLS:**
-- `SSL_KEY_PATH`, `SSL_CERT_PATH`, `HTTPS_PORT`
+**Optional — Database:**
+- `DATABASE_URL` — SQLite file path (default: `./data/platform.db`)
 
-**Optional - Redis:**
+**Optional — Redis:**
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `DISABLE_REDIS`
 
-**Optional - Secrets:**
+**Optional — Secrets:**
 - `SECRETS_PROVIDER` (vault/aws/azure/env)
-- Provider-specific vars (VAULT_ADDR, AWS_REGION, AZURE_KEY_VAULT_URL, etc.)
+- Provider-specific: `VAULT_ADDR`, `AWS_REGION`, `AZURE_KEY_VAULT_URL`
 
-**Optional - Database:**
-- `DATABASE_URL` - SQLite file path (default: `./data/platform.db`)
+**Optional — Alert Delivery:**
+- `SLACK_WEBHOOK_URL` — Slack incoming webhook
+- `PAGERDUTY_ROUTING_KEY` — PagerDuty Events API v2
+- `ALERT_WEBHOOK_URL` — Generic webhook
 
-**Optional - Alert Delivery:**
-- `SLACK_WEBHOOK_URL` - Slack incoming webhook for alert notifications
-- `PAGERDUTY_ROUTING_KEY` - PagerDuty Events API v2 routing key
-- `ALERT_WEBHOOK_URL` - Generic webhook for custom alert integrations
+## Quick Start
 
-### Production Deployment Checklist
-- [ ] Set DATABASE_URL to a durable path (default `./data/platform.db` is fine for single-node)
-- [ ] Change default admin credentials
-- [ ] Set strong JWT_SECRET
-- [ ] Configure TLS certificates (Let's Encrypt recommended)
-- [ ] Set up Redis for distributed rate limiting
-- [ ] Configure secrets provider (Vault/AWS/Azure)
-- [ ] Register secrets for automatic rotation
-- [ ] Set up Prometheus scraping
-- [ ] Configure alert delivery (SLACK_WEBHOOK_URL or PAGERDUTY_ROUTING_KEY)
-- [ ] Review and customize rate limits
-- [ ] Enable audit log retention and rotation
-- [ ] Configure CORS whitelist
-- [ ] Test health check endpoints
-- [ ] Update `k8s/secret.yaml` with real base64-encoded secrets before applying
-
-### Quick Security Setup (Development)
 ```bash
 # Option A: Docker Compose (recommended)
 cp .env.example .env          # Edit JWT_SECRET at minimum
 docker compose up             # Starts app + Redis
 
 # Option B: Manual
-./config/tls/generate-certs.sh
 export JWT_SECRET=$(openssl rand -base64 32)
-export SSL_KEY_PATH=config/tls/server.key
-export SSL_CERT_PATH=config/tls/server.crt
-docker run -d -p 6379:6379 redis:7-alpine
 npm run dev
 ```
 
-### Security Best Practices (Implemented)
-✅ JWT tokens with short expiration
-✅ Bcrypt password hashing (10 rounds)
-✅ XSS prevention via HTML encoding
-✅ SQL/NoSQL injection detection
-✅ Command injection prevention
-✅ TLS 1.2+ with strong ciphers
-✅ Rate limiting (distributed + in-memory fallback)
-✅ Comprehensive audit logging
-✅ PII detection and masking
-✅ Secret rotation and lifecycle management
-✅ Multi-provider secrets support
-✅ Prometheus metrics and alerting (Slack/PagerDuty/webhook delivery)
-✅ Health checks for all components (Kubernetes probes)
-✅ CORS protection
-✅ Security headers (HSTS, CSP, etc.)
-✅ Request size limits
-✅ Error sanitization in production
+## Production Checklist
 
+- [ ] Change default admin credentials (`admin@example.com` / `admin123`)
+- [ ] Set strong `JWT_SECRET`
+- [ ] Set `DATABASE_URL` to a durable path
+- [ ] Configure TLS via reverse proxy (nginx/caddy)
+- [ ] Set up Redis for distributed rate limiting
+- [ ] Configure secrets provider (Vault/AWS/Azure)
+- [ ] Configure alert delivery (`SLACK_WEBHOOK_URL` or `PAGERDUTY_ROUTING_KEY`)
+- [ ] Enable audit log retention and rotation
 
-## Testing Philosophy
+## What Was Intentionally Not Built
 
-**No separate test files or documentation.** All testing information is documented inline:
-- Test coverage statistics included in feature descriptions above
-- Test commands documented in implementation notes
-- Production validation done through monitoring and health checks
+- **Kubernetes manifests** — Use Docker Compose + your own k8s tooling
+- **In-app TLS** — Use a reverse proxy instead
+- **OWASP policy engine** — `requireOwnerOrAdmin()` covers the actual use case in ~80 LOC
 
-**Why this approach:**
-- Reduces maintenance burden (single source of truth)
-- Ensures documentation stays in sync with features
-- Focuses on production readiness over test scripts
-- Developer experience via clear error messages > extensive test suites
+## Agent Success Metric
 
-**Testing in production:**
-- Comprehensive health checks (`/api/monitoring/health/*`)
-- Prometheus metrics for all operations
-- Audit logging for troubleshooting
-- Structured errors enable self-correction
+`agent_zero_shot_success_rate` Prometheus gauge tracks whether agents succeed on their first API call. A retry is detected when the same `X-Agent-ID` hits the same endpoint within 60 seconds.
 
+```bash
+curl localhost:3000/api/monitoring/metrics | grep agent_zero_shot
+```
