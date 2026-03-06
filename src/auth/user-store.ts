@@ -155,6 +155,19 @@ export function deleteUser(userId: string): boolean {
  * Guarded: skips if any user already exists.
  */
 export async function initializeDefaultUsers(): Promise<void> {
+  const bootstrapEnabled =
+    process.env.NODE_ENV === 'test' || process.env.ENABLE_BOOTSTRAP_SEEDING === 'true';
+
+  if (!bootstrapEnabled) {
+    return;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Bootstrap seeding is disabled in production. Remove ENABLE_BOOTSTRAP_SEEDING.'
+    );
+  }
+
   const countRow = getDb()
     .select({ count: sql<number>`COUNT(*)` })
     .from(usersTable)
@@ -162,10 +175,13 @@ export async function initializeDefaultUsers(): Promise<void> {
 
   if ((countRow?.count ?? 0) > 0) return;
 
-  await createUser('admin@example.com', 'admin123', 'Admin User', UserRole.ADMIN);
+  const adminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@example.com';
+  const adminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'admin123';
+  const adminName = process.env.BOOTSTRAP_ADMIN_NAME || 'Admin User';
+
+  await createUser(adminEmail, adminPassword, adminName, UserRole.ADMIN);
 
   console.log('📝 Default admin user created:');
-  console.log('   Email: admin@example.com');
-  console.log('   Password: admin123');
-  console.log('   ⚠️  CHANGE THIS PASSWORD IN PRODUCTION!');
+  console.log(`   Email: ${adminEmail}`);
+  console.log('   ⚠️  Bootstrap password was set via env/default; rotate immediately.');
 }

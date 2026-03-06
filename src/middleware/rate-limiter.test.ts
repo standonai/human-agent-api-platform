@@ -81,6 +81,7 @@ describe('rateLimit', () => {
     // Agent request (different IP)
     const agentReq = createRequest({
       ip: '192.168.1.1',
+      agent: { id: 'agent_1', name: 'test-agent' },
       agentContext: {
         identification: { agentType: 'openai', userAgent: 'OpenAI-Agent' },
         requestId: 'req-2',
@@ -97,6 +98,7 @@ describe('rateLimit', () => {
     const middleware = rateLimit({ customLimits });
 
     const req = createRequest({
+      agent: { id: 'premium-agent', name: 'premium' },
       agentContext: {
         identification: {
           agentType: 'openai',
@@ -114,13 +116,36 @@ describe('rateLimit', () => {
     expect(headers['X-RateLimit-Limit']).toBe('1000');
   });
 
+  it('should ignore unauthenticated x-agent-id for custom limits', () => {
+    const customLimits = new Map([['premium-agent', 1000]]);
+    const middleware = rateLimit({ humanLimit: 100, customLimits });
+
+    const req = createRequest({
+      agentContext: {
+        identification: {
+          agentType: 'openai',
+          agentId: 'premium-agent',
+          userAgent: 'test',
+        },
+        requestId: 'req-1',
+        timestamp: new Date(),
+      },
+      // No authenticated req.agent
+    });
+
+    const { res, headers } = createResponse();
+    middleware(req, res, next);
+
+    expect(headers['X-RateLimit-Limit']).toBe('100');
+  });
+
   it('should set Retry-After header when rate limited', async () => {
     const middleware = rateLimit({ humanLimit: 1 });
     const req = createRequest();
     const { res, headers } = createResponse();
 
     await middleware(req, res, next);
-    await middleware(req, res, next).catch(() => {});
+    await expect(middleware(req, res, next)).rejects.toThrow(ApiError);
 
     expect(headers['Retry-After']).toBeDefined();
     expect(parseInt(headers['Retry-After'])).toBeGreaterThan(0);
@@ -133,7 +158,10 @@ describe('rateLimit', () => {
 
     await middleware(req, res, next);
 
-    const error = await middleware(req, res, next).catch(e => e);
+    const error = await middleware(req, res, next).then(
+      () => undefined,
+      (e: unknown) => e
+    );
     expect(error).toBeInstanceOf(ApiError);
     const apiError = error as ApiError;
     expect(apiError.statusCode).toBe(429);

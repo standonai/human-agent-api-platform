@@ -26,6 +26,7 @@ tools/
 *.swo
 *~
 .DS_Store
+.git/.DS_Store
 
 # Testing
 coverage/

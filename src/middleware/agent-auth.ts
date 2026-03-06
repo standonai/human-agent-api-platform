@@ -7,6 +7,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyApiKey, updateAgentActivity } from '../auth/agent-store.js';
 import { ErrorCode } from '../types/errors.js';
+import { withDocUrl } from '../utils/docs-url.js';
 
 /**
  * Require agent API key authentication
@@ -34,7 +35,7 @@ export function requireAgentAuth(req: Request, res: Response, next: NextFunction
           message: 'Agent ID and API key are required',
           suggestion: 'Include X-Agent-ID and X-Agent-Key headers in your request',
         }],
-        doc_url: 'https://docs.example.com/agents/auth',
+        ...withDocUrl('/agents/auth'),
       },
     });
     return;
@@ -54,7 +55,7 @@ export function requireAgentAuth(req: Request, res: Response, next: NextFunction
           message: 'Agent API key is invalid or has been revoked',
           suggestion: 'Check your API key or register a new agent via POST /api/agents/register',
         }],
-        doc_url: 'https://docs.example.com/agents/auth',
+        ...withDocUrl('/agents/auth'),
       },
     });
     return;
@@ -179,7 +180,7 @@ export function requireUserOrAgent(req: Request, res: Response, next: NextFuncti
         message: 'This endpoint requires either user or agent authentication',
         suggestion: 'Authenticate as a user (Bearer token) or agent (X-Agent-ID + X-Agent-Key)',
       }],
-      doc_url: 'https://docs.example.com/auth',
+      ...withDocUrl('/auth'),
     },
   });
 }

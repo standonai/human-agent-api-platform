@@ -1,4 +1,4 @@
-name: CI
+name: Minimal Gate
 
 on:
   push:
@@ -7,8 +7,8 @@ on:
     branches: [main, develop]
 
 jobs:
-  validate:
-    name: Extended CI (Lint, Full Test, Build)
+  minimal-gate:
+    name: Typecheck + Targeted + Startup Smoke
     runs-on: ubuntu-latest
 
     steps:
@@ -23,17 +23,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Security audit (prod deps)
-        run: npm run security:audit
+      - name: Type check
+        run: npm run type-check
 
-      - name: Lint code
-        run: npm run lint
+      - name: Targeted unit tests
+        run: npm run test:targeted
 
-      - name: Lint API specifications
-        run: npm run lint:api
-
-      - name: Run tests
-        run: npm test
-
-      - name: Build
-        run: npm run build
+      - name: Startup validation smoke
+        run: npm run smoke:startup

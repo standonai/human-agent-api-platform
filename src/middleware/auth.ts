@@ -7,6 +7,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../auth/jwt-utils.js';
 import { ErrorCode } from '../types/errors.js';
+import { withDocUrl } from '../utils/docs-url.js';
 
 /**
  * Require JWT authentication
@@ -29,7 +30,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
           message: 'No authorization header provided',
           suggestion: 'Include Authorization: Bearer <token> header in your request',
         }],
-        doc_url: 'https://docs.example.com/auth',
+        ...withDocUrl('/auth'),
       },
     });
     return;
@@ -47,7 +48,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
           message: 'Authorization header must use Bearer scheme',
           suggestion: 'Use format: Authorization: Bearer <your-token>',
         }],
-        doc_url: 'https://docs.example.com/auth',
+        ...withDocUrl('/auth'),
       },
     });
     return;
@@ -82,7 +83,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
             message: 'Your session has expired',
             suggestion: 'Refresh your token using POST /api/auth/refresh or login again',
           }],
-          doc_url: 'https://docs.example.com/auth/refresh',
+          ...withDocUrl('/auth/refresh'),
         },
       });
       return;
@@ -99,7 +100,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
             message: 'Token is malformed or invalid',
             suggestion: 'Obtain a new token via POST /api/auth/login',
           }],
-          doc_url: 'https://docs.example.com/auth/login',
+          ...withDocUrl('/auth/login'),
         },
       });
       return;

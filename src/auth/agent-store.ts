@@ -204,6 +204,19 @@ export function deleteAgent(agentId: string): boolean {
  * Guarded: skips if any agent already exists.
  */
 export function initializeDefaultAgents(): void {
+  const bootstrapEnabled =
+    process.env.NODE_ENV === 'test' || process.env.ENABLE_BOOTSTRAP_SEEDING === 'true';
+
+  if (!bootstrapEnabled) {
+    return;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Bootstrap seeding is disabled in production. Remove ENABLE_BOOTSTRAP_SEEDING.'
+    );
+  }
+
   const countRow = getDb()
     .select({ count: sql<number>`COUNT(*)` })
     .from(agentsTable)
@@ -211,11 +224,10 @@ export function initializeDefaultAgents(): void {
 
   if ((countRow?.count ?? 0) > 0) return;
 
-  const testAgent = registerAgent('test-agent', 1000);
+  const bootstrapAgentName = process.env.BOOTSTRAP_AGENT_NAME || 'test-agent';
+  const testAgent = registerAgent(bootstrapAgentName, 1000);
 
   console.log('🤖 Default agent created for testing:');
   console.log(`   Agent ID: ${testAgent.id}`);
-  console.log(`   API Key: ${testAgent.apiKey}`);
-  console.log('   ⚠️  Save this API key - it will not be shown again!');
-  console.log('   ⚠️  REMOVE THIS IN PRODUCTION!');
+  console.log('   ⚠️  API key generated for bootstrap use; rotate/remove before production.');
 }

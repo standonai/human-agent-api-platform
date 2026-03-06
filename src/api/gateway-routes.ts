@@ -5,8 +5,14 @@
 import { Router, Request, Response } from 'express';
 import { getGatewayManager } from '../gateway/gateway-manager.js';
 import { asyncHandler } from '../middleware/index.js';
+import { requireAuth } from '../middleware/auth.js';
+import { requireRole } from '../middleware/authorization.js';
+import { UserRole } from '../types/auth.js';
 
 const router = Router();
+
+// Gateway operations are admin-only
+router.use(requireAuth, requireRole(UserRole.ADMIN));
 
 /**
  * GET /api/gateway/status

@@ -5,7 +5,8 @@
  */
 
 import jwt from 'jsonwebtoken';
-import { JWTPayload, TokenPair, User } from '../types/auth.js';
+import { randomUUID } from 'crypto';
+import { JWTPayload, RefreshTokenPayload, TokenPair, User } from '../types/auth.js';
 
 /**
  * Get JWT secret from environment
@@ -59,9 +60,15 @@ export function generateAccessToken(user: User): string {
  * Generate refresh token
  */
 export function generateRefreshToken(user: User): string {
+  const jti = randomUUID();
+  return generateRefreshTokenWithId(user, jti);
+}
+
+export function generateRefreshTokenWithId(user: User, jti: string): string {
   const payload = {
     userId: user.id,
-    type: 'refresh',
+    type: 'refresh' as const,
+    jti,
   };
 
   return jwt.sign(payload as object, getJWTSecret(), {
@@ -73,16 +80,29 @@ export function generateRefreshToken(user: User): string {
  * Generate token pair (access + refresh)
  */
 export function generateTokenPair(user: User): TokenPair {
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
+  return generateTokenPairWithMetadata(user).tokens;
+}
 
-  // Get expiration time in seconds
+export function generateTokenPairWithMetadata(user: User): {
+  tokens: TokenPair;
+  refreshTokenId: string;
+  refreshTokenExpiresAt: Date;
+} {
+  const accessToken = generateAccessToken(user);
+  const refreshTokenId = randomUUID();
+  const refreshToken = generateRefreshTokenWithId(user, refreshTokenId);
+
   const expiresIn = parseExpirationToSeconds(getJWTExpiration());
+  const refreshExpiresIn = parseExpirationToSeconds(getRefreshExpiration());
 
   return {
-    accessToken,
-    refreshToken,
-    expiresIn,
+    tokens: {
+      accessToken,
+      refreshToken,
+      expiresIn,
+    },
+    refreshTokenId,
+    refreshTokenExpiresAt: new Date(Date.now() + refreshExpiresIn * 1000),
   };
 }
 
@@ -106,15 +126,15 @@ export function verifyToken(token: string): JWTPayload {
 /**
  * Verify refresh token
  */
-export function verifyRefreshToken(token: string): { userId: string; type: string } {
+export function verifyRefreshToken(token: string): RefreshTokenPayload {
   try {
     const payload = jwt.verify(token, getJWTSecret()) as any;
 
-    if (payload.type !== 'refresh') {
+    if (payload.type !== 'refresh' || typeof payload.jti !== 'string' || !payload.jti) {
       throw new Error('INVALID_REFRESH_TOKEN');
     }
 
-    return payload;
+    return payload as RefreshTokenPayload;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
       throw new Error('REFRESH_TOKEN_EXPIRED');

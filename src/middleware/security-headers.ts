@@ -6,6 +6,20 @@
  */
 
 import helmet from 'helmet';
+import { RequestHandler } from 'express';
+
+function getBooleanEnv(name: string, fallback: boolean): boolean {
+  const value = process.env[name];
+  if (!value) {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+function isProduction(): boolean {
+  return (process.env.NODE_ENV || 'development') === 'production';
+}
 
 /**
  * Security Headers Configuration
@@ -18,65 +32,78 @@ import helmet from 'helmet';
  * - Referrer-Policy: Control referrer information
  * - X-DNS-Prefetch-Control: Control DNS prefetching
  */
-export const securityHeaders = helmet({
+export function securityHeaders(): RequestHandler {
+  const hstsEnabled = getBooleanEnv('SECURITY_HSTS_ENABLED', isProduction());
+  const cspUpgradeInsecure = getBooleanEnv(
+    'SECURITY_CSP_UPGRADE_INSECURE_REQUESTS',
+    isProduction()
+  );
+  const hstsMaxAge = parseInt(process.env.SECURITY_HSTS_MAX_AGE_SECONDS || '31536000', 10);
+
+  const cspDirectives: Record<string, Iterable<string>> = {
+    // Default: Only load resources from same origin
+    defaultSrc: ["'self'"],
+
+    // Scripts: Only from same origin (no inline scripts)
+    scriptSrc: ["'self'"],
+
+    // Styles: Same origin + inline styles (needed for dashboard)
+    styleSrc: ["'self'", "'unsafe-inline'"],
+
+    // Images: Same origin + data URIs + HTTPS
+    imgSrc: ["'self'", 'data:', 'https:'],
+
+    // AJAX/WebSocket: Same origin only
+    connectSrc: ["'self'"],
+
+    // Fonts: Same origin only
+    fontSrc: ["'self'"],
+
+    // Objects/Embeds: None allowed
+    objectSrc: ["'none'"],
+
+    // Media: None allowed
+    mediaSrc: ["'none'"],
+
+    // Frames: None allowed (prevents clickjacking)
+    frameSrc: ["'none'"],
+
+    // Base URI: Same origin only
+    baseUri: ["'self'"],
+
+    // Form actions: Same origin only
+    formAction: ["'self'"],
+
+    // Frame ancestors: None (defense in depth with X-Frame-Options)
+    frameAncestors: ["'none'"],
+  };
+
+  if (cspUpgradeInsecure) {
+    cspDirectives.upgradeInsecureRequests = [];
+  }
+
+  return helmet({
   /**
    * HTTP Strict Transport Security (HSTS)
    * Forces browsers to use HTTPS for 1 year
    * Prevents downgrade attacks and cookie hijacking
    */
-  hsts: {
-    maxAge: 31536000, // 1 year in seconds
-    includeSubDomains: true, // Apply to all subdomains
-    preload: true, // Submit to browser HSTS preload list
-  },
+    hsts: hstsEnabled
+      ? {
+          maxAge: Number.isNaN(hstsMaxAge) || hstsMaxAge <= 0 ? 31536000 : hstsMaxAge,
+          includeSubDomains: true,
+          preload: true,
+        }
+      : false,
 
   /**
    * Content Security Policy (CSP)
    * Prevents XSS, clickjacking, and other code injection attacks
    * Controls which resources can be loaded
    */
-  contentSecurityPolicy: {
-    directives: {
-      // Default: Only load resources from same origin
-      defaultSrc: ["'self'"],
-
-      // Scripts: Only from same origin (no inline scripts)
-      scriptSrc: ["'self'"],
-
-      // Styles: Same origin + inline styles (needed for dashboard)
-      styleSrc: ["'self'", "'unsafe-inline'"],
-
-      // Images: Same origin + data URIs + HTTPS
-      imgSrc: ["'self'", 'data:', 'https:'],
-
-      // AJAX/WebSocket: Same origin only
-      connectSrc: ["'self'"],
-
-      // Fonts: Same origin only
-      fontSrc: ["'self'"],
-
-      // Objects/Embeds: None allowed
-      objectSrc: ["'none'"],
-
-      // Media: None allowed
-      mediaSrc: ["'none'"],
-
-      // Frames: None allowed (prevents clickjacking)
-      frameSrc: ["'none'"],
-
-      // Base URI: Same origin only
-      baseUri: ["'self'"],
-
-      // Form actions: Same origin only
-      formAction: ["'self'"],
-
-      // Frame ancestors: None (defense in depth with X-Frame-Options)
-      frameAncestors: ["'none'"],
-
-      // Upgrade insecure requests to HTTPS
-      upgradeInsecureRequests: [],
+    contentSecurityPolicy: {
+      directives: cspDirectives,
     },
-  },
 
   /**
    * X-Frame-Options
@@ -137,7 +164,8 @@ export const securityHeaders = helmet({
   permittedCrossDomainPolicies: {
     permittedPolicies: 'none',
   },
-});
+  });
+}
 
 /**
  * Additional custom security headers
@@ -164,9 +192,21 @@ export function customSecurityHeaders(req: any, res: any, next: any): void {
  * Log security headers configuration on startup
  */
 export function logSecurityHeaders(): void {
+  const hstsEnabled = getBooleanEnv('SECURITY_HSTS_ENABLED', isProduction());
+  const cspUpgradeInsecure = getBooleanEnv(
+    'SECURITY_CSP_UPGRADE_INSECURE_REQUESTS',
+    isProduction()
+  );
+  const hstsMaxAge = parseInt(process.env.SECURITY_HSTS_MAX_AGE_SECONDS || '31536000', 10);
+
   console.log('🔒 Security Headers Enabled:');
-  console.log('   ✅ HSTS (Force HTTPS for 1 year)');
+  console.log(
+    `   ${hstsEnabled ? '✅' : '⚠️ '} HSTS (${hstsEnabled ? `enabled, max-age ${Number.isNaN(hstsMaxAge) ? 31536000 : hstsMaxAge}s` : 'disabled'})`
+  );
   console.log('   ✅ CSP (Content Security Policy)');
+  console.log(
+    `   ${cspUpgradeInsecure ? '✅' : '⚠️ '} CSP upgrade-insecure-requests (${cspUpgradeInsecure ? 'enabled' : 'disabled'})`
+  );
   console.log('   ✅ X-Frame-Options (Deny)');
   console.log('   ✅ X-Content-Type-Options (nosniff)');
   console.log('   ✅ Referrer-Policy (strict-origin-when-cross-origin)');

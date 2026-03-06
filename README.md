@@ -2,10 +2,10 @@
 
 > **A production-ready API platform designed for both human developers and AI agents**, featuring OpenAPI-first design, multi-cloud gateway integration, and built-in observability.
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![Tests](https://img.shields.io/badge/tests-67%2F67-brightgreen)]()
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)]()
-[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-green)]()
+![Build](https://img.shields.io/badge/CI-configured-brightgreen)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
+![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-green)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ## 🎯 What Is This?
 
@@ -59,7 +59,7 @@ This is an **API server template** - think of it like a starting point for build
 #### Option 1: Use as a Reference/Example
 ```bash
 # Study the code to learn best practices
-git clone <repo>
+git clone https://github.com/standonai/human-agent-api-platform.git
 cd human-agent-api-platform
 # Read the code, copy patterns into your own API
 ```
@@ -73,7 +73,7 @@ cd human-agent-api-platform
 #### Option 2: Fork and Customize (Recommended)
 ```bash
 # Fork this repo and add your business logic
-git clone <your-fork>
+git clone https://github.com/standonai/human-agent-api-platform.git
 cd human-agent-api-platform
 
 # Add your own endpoints
@@ -91,9 +91,9 @@ npm run dev
 #### Option 3: Use as-is for Testing
 ```bash
 # Run the example API to test AI agents
-npm install && npm run dev
+npm ci && npm run dev
 
-# Use the /api/users endpoints to test your agent
+# Use /api/auth and /api/v2/tasks to test your agent
 # See how agents interact with well-designed APIs
 ```
 
@@ -496,25 +496,102 @@ res.status(400).json({ error: { ... } });
 
 The platform handles the infrastructure - you focus on your business logic!
 
-## 🚀 Quick Start (5 minutes)
+## 🚀 Install and Use (Current Platform)
+
+### Prerequisites
+
+- Node.js 20+
+- npm
+- Redis (optional, recommended for distributed rate limiting and lockout/session coordination)
+
+### 1) Install
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/your-org/human-agent-api-platform.git
+git clone https://github.com/standonai/human-agent-api-platform.git
 cd human-agent-api-platform
-npm install
-
-# 2. Start development server
-npm run dev
-
-# 3. Test the API
-curl http://localhost:3000/health
-
-# 4. Open observability dashboard
-open http://localhost:3000/dashboard.html
+npm ci
+cp .env.example .env
 ```
 
-**You're ready!** The API is running on `http://localhost:3000`
+### 2) Minimum Local Secure Configuration
+
+Update `.env` with at least:
+
+```bash
+NODE_ENV=development
+APP_PROFILE=core
+PORT=3000
+
+JWT_SECRET=replace-with-a-strong-random-secret
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+DATABASE_URL=./data/platform.db
+```
+
+### 3) Choose Runtime Profile
+
+- `APP_PROFILE=core`: minimal API surface for local development and fast startup
+- `APP_PROFILE=full`: enables monitoring, gateway, secrets, and full dependency checks
+
+Use strict full startup checks when validating production-like behavior:
+
+```bash
+APP_PROFILE=full FULL_PROFILE_STRICT=true npm run dev
+```
+
+### 4) Run the Platform
+
+```bash
+# Development
+npm run dev
+
+# Production-like run
+npm run build
+npm start
+```
+
+### 5) Verify Health and Auth Flow
+
+```bash
+# Health
+curl http://localhost:3000/api/health
+
+# Register
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password123","name":"Example User"}'
+
+# Login
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","password":"password123"}'
+
+# Refresh
+curl -X POST http://localhost:3000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<paste-refresh-token>"}'
+```
+
+### 6) Pre-Deployment Validation Checks
+
+```bash
+npm run type-check
+npm run test:targeted
+npm run smoke:startup
+npm run preflight:prod-env
+```
+
+### 7) Required Production Controls
+
+Production deployments should explicitly enforce:
+
+- `STRICT_STARTUP_VALIDATION=true`
+- `ENFORCE_HTTPS=true`
+- `TRUST_PROXY=true` (or network-specific value like `loopback`/hop count)
+- strong, non-placeholder `JWT_SECRET`
+- explicit production `ALLOWED_ORIGINS`
+- non-default durable `DATABASE_URL`
+
+See [Authentication System](./AUTHENTICATION.md), [Security Guidelines](./SECURITY.md), and [Deployment](#-deployment).
 
 ### 🔐 Default Credentials (Development Only)
 
@@ -541,11 +618,9 @@ See [AUTHENTICATION.md](./AUTHENTICATION.md) for complete authentication documen
 
 ### Core Documentation
 - **[Architecture & Design Principles](./CLAUDE.md)** - Design philosophy and implementation guidance
-- **[Authentication System](./AUTHENTICATION.md)** - JWT tokens and agent API keys
-- **[Input Sanitization](./SECURITY_PHASE3_INPUT_SANITIZATION.md)** - XSS, SQL injection, command injection protection
-- **[Audit Logging](./SECURITY_PHASE4_AUDIT_LOGGING.md)** - Security monitoring and compliance
-- **[HTTPS/TLS Setup](./SECURITY_PHASE5_HTTPS_TLS.md)** - SSL/TLS encryption and certificates
-- **[Security Guidelines](./SECURITY.md)** - Security best practices and vulnerability reporting
+- **[Authentication System](./AUTHENTICATION.md)** - JWT tokens and refresh/session security
+- **[Authorization System](./AUTHORIZATION.md)** - RBAC and ownership-based controls
+- **[Security Guidelines](./SECURITY.md)** - HTTPS/TLS, sanitization, audit, and response policy
 - **[OpenAPI Specification](./specs/openapi/platform-api.yaml)** - Complete API documentation
 - **[Spectral Rules](./.spectral.yaml)** - API linting and governance rules
 
@@ -660,7 +735,7 @@ router.post('/admin/config',
 - Request size limits
 - Error sanitization in production
 
-**Complete documentation:** [AUTHENTICATION.md](./AUTHENTICATION.md) | [INPUT SANITIZATION](./SECURITY_PHASE3_INPUT_SANITIZATION.md) | [AUDIT LOGGING](./SECURITY_PHASE4_AUDIT_LOGGING.md) | [HTTPS/TLS](./SECURITY_PHASE5_HTTPS_TLS.md)
+**Complete documentation:** [AUTHENTICATION.md](./AUTHENTICATION.md) | [AUTHORIZATION.md](./AUTHORIZATION.md) | [SECURITY.md](./SECURITY.md)
 
 ### 🤖 AI Agent Support
 
@@ -936,7 +1011,7 @@ The platform is built around **6 core pillars** (see [CLAUDE.md](./CLAUDE.md)):
 │       └── platform-api.yaml  # Complete OpenAPI spec
 ├── public/
 │   └── dashboard.html    # Observability dashboard
-└── tests/               # Test suite (67 tests)
+└── tests/               # Test suite
 ```
 
 ## 🎓 Real-World Examples
@@ -1015,9 +1090,11 @@ def create_user(command):
 - **Multi-Cloud**: Deploy to 4 gateway providers
 - **Uptime**: 99.9%+ with gateway redundancy
 - **Response Time**: P95 < 200ms
-- **Test Coverage**: 67 tests, all passing
+- **Test Coverage**: Comprehensive automated test suite
 
 ## 🚀 Deployment
+
+For install/run guidance first, start at [Install and Use (Current Platform)](#-install-and-use-current-platform).
 
 ### Local Development
 
@@ -1027,6 +1104,8 @@ npm run dev
 # No gateway required
 ```
 
+Local defaults are for development convenience only. They are not production-safe defaults.
+
 ### Production (Multi-Cloud)
 
 **Configuration:**
@@ -1034,6 +1113,11 @@ npm run dev
 # .env.production
 NODE_ENV=production
 PORT=3000
+APP_PROFILE=full
+STRICT_STARTUP_VALIDATION=true
+FULL_PROFILE_STRICT=true
+ENFORCE_HTTPS=true
+TRUST_PROXY=true
 
 # Multi-cloud gateway sync (comma-separated)
 GATEWAY_PROVIDERS=kong,aws,azure,apigee
@@ -1067,6 +1151,16 @@ npm run build
 npm start
 
 # OpenAPI spec automatically syncs to all configured gateways!
+```
+
+Run production readiness checks before deploying:
+
+```bash
+npm run type-check
+npm run test:targeted
+npm run smoke:startup
+npm run preflight:prod-env
+npm run security:audit
 ```
 
 ### Docker
@@ -1114,34 +1208,45 @@ npm run gateway:health
 ## 🧪 Testing
 
 ```bash
-# Run all tests (67 tests)
+# Run all tests
 npm test
 
 # Run with coverage
 npm run test:coverage
 
+# Run targeted release checks
+npm run test:targeted
+
 # Lint OpenAPI specs
 npm run lint:api
 
 # Type check
-npm run build
+npm run type-check
+
+# Startup/production safety checks
+npm run smoke:startup
+npm run preflight:prod-env
 ```
 
-**Test Results:**
-```
-✓ src/tools/openai-converter.test.ts     (5 tests)
-✓ src/tools/anthropic-converter.test.ts  (4 tests)
-✓ src/utils/error-builder.test.ts        (7 tests)
-✓ src/validation/openapi-to-zod.test.ts  (13 tests)
-✓ src/middleware/dry-run.test.ts         (5 tests)
-✓ src/middleware/agent-tracking.test.ts  (8 tests)
-✓ src/middleware/request-id.test.ts      (4 tests)
-✓ src/middleware/rate-limiter.test.ts    (10 tests)
-✓ src/api/converter-routes.test.ts       (11 tests)
+## 📦 GitHub Publish Checklist
 
-Test Files: 9 passed (9)
-Tests: 67 passed (67)
-```
+Before making this repository public:
+
+1. Update clone URLs/placeholders to your actual GitHub org/repo.
+2. Set branch protection rules and require CI checks:
+   - `Minimal Gate / Typecheck + Targeted + Startup Smoke`
+   - `CI / Extended CI (Lint, Full Test, Build)`
+3. Configure repository secrets/variables for deployment environments.
+4. Verify production env values:
+   - strong `JWT_SECRET`
+   - explicit `ALLOWED_ORIGINS`
+   - durable `DATABASE_URL`
+   - `ENFORCE_HTTPS=true` and valid `TRUST_PROXY`
+5. Run release verification:
+   - `npm run type-check`
+   - `npm run test:targeted`
+   - `npm run smoke:startup`
+   - `npm run preflight:prod-env`
 
 ## 🤝 Contributing
 
@@ -1182,7 +1287,7 @@ npm run build       # TypeScript compilation
 - ✅ **Zero-shot success >80%** - Agents succeed on first try
 - ✅ **Multi-cloud** - Auto-sync to Kong, AWS, Azure, Apigee
 - ✅ **Built-in observability** - Real-time dashboard
-- ✅ **Production-ready** - 67 tests, strict TypeScript
+- ✅ **Production-ready** - Strict TypeScript and automated quality gates
 
 ## 📄 License
 
@@ -1202,9 +1307,9 @@ Built with:
 **Ready to build APIs for both humans and AI agents?**
 
 ```bash
-git clone https://github.com/your-org/human-agent-api-platform.git
+git clone https://github.com/standonai/human-agent-api-platform.git
 cd human-agent-api-platform
-npm install && npm run dev
+npm ci && npm run dev
 ```
 
-**Questions?** Check the [User Guide](./USER_GUIDE.md) or open an issue!
+**Questions?** Open an issue in this repository.

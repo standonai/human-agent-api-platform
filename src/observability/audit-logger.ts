@@ -62,6 +62,7 @@ export enum AuditEvent {
   USER_LOGOUT = 'USER_LOGOUT',
   TOKEN_REFRESH = 'TOKEN_REFRESH',
   TOKEN_EXPIRED = 'TOKEN_EXPIRED',
+  TOKEN_REUSE_DETECTED = 'TOKEN_REUSE_DETECTED',
 
   // User management
   USER_CREATED = 'USER_CREATED',
@@ -254,6 +255,7 @@ function getEventSeverity(event: AuditEvent): LogSeverity {
     AuditEvent.COMMAND_INJECTION_ATTEMPT,
     AuditEvent.AGENT_DELETED,
     AuditEvent.USER_DELETED,
+    AuditEvent.TOKEN_REUSE_DETECTED,
   ];
 
   const warningEvents = [

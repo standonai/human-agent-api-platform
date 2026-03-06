@@ -58,6 +58,14 @@ export interface TokenPair {
   expiresIn: number;
 }
 
+export interface RefreshTokenPayload {
+  userId: string;
+  type: 'refresh';
+  jti: string;
+  iat: number;
+  exp: number;
+}
+
 /**
  * Login credentials
  */

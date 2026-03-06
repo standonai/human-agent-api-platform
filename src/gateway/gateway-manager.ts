@@ -7,6 +7,7 @@
 
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { load as parseYaml } from 'js-yaml';
 import { ApiGateway, GatewayConfig, SyncResult } from './types.js';
 import { createGateway, loadGatewayConfig } from './gateway-factory.js';
 
@@ -159,36 +160,19 @@ export class GatewayManager {
       if (path.endsWith('.json')) {
         return JSON.parse(content);
       } else {
-        // For YAML, we'll need to parse it
-        // For now, let's use a simple approach
-        return this.parseYAML(content);
+        return this.parseYAML(content, path);
       }
     } catch (error: any) {
       throw new Error(`Failed to load OpenAPI spec from ${path}: ${error.message}`);
     }
   }
 
-  /**
-   * Simple YAML parser for OpenAPI specs
-   * (In production, use a proper YAML library like js-yaml)
-   */
-  private parseYAML(_content: string): any {
-    // This is a simplified parser. In production, use js-yaml
-    // For now, we'll just return a mock structure
-    console.warn('⚠️  Using simplified YAML parser. Install js-yaml for full support.');
-
-    return {
-      openapi: '3.1.0',
-      info: { title: 'API Platform', version: '2025-01-29' },
-      servers: [{ url: process.env.API_URL || 'http://localhost:3000' }],
-      paths: {
-        '/health': { get: {} },
-        '/api/v2/users': { get: {}, post: {} },
-        '/api/v2/users/{id}': { get: {}, put: {}, delete: {} },
-        '/api/metrics': { get: {} },
-        '/api/convert': { post: {} },
-      },
-    };
+  private parseYAML(content: string, path: string): any {
+    const parsed = parseYaml(content);
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error(`Parsed YAML is not a valid object: ${path}`);
+    }
+    return parsed;
   }
 }
 

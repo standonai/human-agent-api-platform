@@ -7,6 +7,10 @@
 import express, { Request, Response } from 'express';
 import { getMetrics, getContentType } from '../monitoring/prometheus-exporter.js';
 import { performHealthCheck, isReady, isAlive } from '../monitoring/health-checker.js';
+import { getStartupPostureSummary } from '../monitoring/startup-posture.js';
+import { requireAuth } from '../middleware/auth.js';
+import { requireRole } from '../middleware/authorization.js';
+import { UserRole } from '../types/auth.js';
 
 const router = express.Router();
 
@@ -16,7 +20,7 @@ const router = express.Router();
  *
  * Returns metrics in Prometheus text format
  */
-router.get('/metrics', async (_req: Request, res: Response) => {
+router.get('/metrics', requireAuth, requireRole(UserRole.ADMIN), async (_req: Request, res: Response) => {
   try {
     res.set('Content-Type', getContentType());
     const metrics = await getMetrics();
@@ -38,7 +42,7 @@ router.get('/metrics', async (_req: Request, res: Response) => {
  *
  * Returns detailed health status of all components
  */
-router.get('/health', async (_req: Request, res: Response) => {
+router.get('/health', requireAuth, requireRole(UserRole.ADMIN), async (_req: Request, res: Response) => {
   try {
     const health = await performHealthCheck();
 
@@ -58,6 +62,31 @@ router.get('/health', async (_req: Request, res: Response) => {
       error: {
         code: 'HEALTH_CHECK_ERROR',
         message: 'Health check failed',
+        details: [(error as Error).message],
+      },
+    });
+  }
+});
+
+/**
+ * GET /health/startup
+ * Startup security/dependency posture (admin only)
+ */
+router.get('/health/startup', requireAuth, requireRole(UserRole.ADMIN), async (_req: Request, res: Response) => {
+  try {
+    const posture = await getStartupPostureSummary();
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      data: posture,
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      error: {
+        code: 'STARTUP_POSTURE_ERROR',
+        message: 'Failed to compute startup posture',
         details: [(error as Error).message],
       },
     });

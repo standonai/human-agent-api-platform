@@ -32,6 +32,13 @@ export interface ComponentHealth {
 
 const startTime = Date.now();
 
+function isStrictFullDependencyReadinessEnabled(): boolean {
+  const env = process.env.NODE_ENV || 'development';
+  const profile = (process.env.APP_PROFILE || 'core').toLowerCase();
+  const strictFull = process.env.FULL_PROFILE_STRICT === 'true';
+  return env === 'production' && profile === 'full' && strictFull;
+}
+
 /**
  * Perform comprehensive health check
  */
@@ -108,6 +115,22 @@ async function checkApplication(): Promise<ComponentHealth> {
  */
 async function checkRedis(): Promise<ComponentHealth> {
   const start = Date.now();
+  const strictDependencyReadiness = isStrictFullDependencyReadinessEnabled();
+  const redisDisabled = process.env.DISABLE_REDIS === 'true';
+
+  if (redisDisabled) {
+    return {
+      status: strictDependencyReadiness ? 'fail' : 'warn',
+      message: strictDependencyReadiness
+        ? 'Redis is disabled in strict full production mode'
+        : 'Redis is disabled (using in-memory fallback)',
+      timestamp: new Date().toISOString(),
+      duration: Date.now() - start,
+      details: {
+        disabled: true,
+      },
+    };
+  }
 
   try {
     const health = await checkRedisHealth();
@@ -124,8 +147,10 @@ async function checkRedis(): Promise<ComponentHealth> {
       };
     } else {
       return {
-        status: 'warn',
-        message: 'Redis is unavailable (using in-memory fallback)',
+        status: strictDependencyReadiness ? 'fail' : 'warn',
+        message: strictDependencyReadiness
+          ? 'Redis is unavailable in strict full production mode'
+          : 'Redis is unavailable (using in-memory fallback)',
         timestamp: new Date().toISOString(),
         duration: Date.now() - start,
         details: {
@@ -135,8 +160,10 @@ async function checkRedis(): Promise<ComponentHealth> {
     }
   } catch (error) {
     return {
-      status: 'warn',
-      message: 'Redis check failed (using in-memory fallback)',
+      status: strictDependencyReadiness ? 'fail' : 'warn',
+      message: strictDependencyReadiness
+        ? 'Redis check failed in strict full production mode'
+        : 'Redis check failed (using in-memory fallback)',
       timestamp: new Date().toISOString(),
       duration: Date.now() - start,
     };
@@ -148,13 +175,15 @@ async function checkRedis(): Promise<ComponentHealth> {
  */
 async function checkSecrets(): Promise<ComponentHealth> {
   const start = Date.now();
+  const strictDependencyReadiness = isStrictFullDependencyReadinessEnabled();
 
   try {
     const secretsManager = getSecretsManager();
     const healthy = await secretsManager.isHealthy();
     const provider = secretsManager.getProviderName();
+    const fallbackProvider = provider === 'environment';
 
-    if (healthy) {
+    if (healthy && !(strictDependencyReadiness && fallbackProvider)) {
       return {
         status: 'pass',
         message: `Secrets manager is healthy (${provider})`,
@@ -166,8 +195,10 @@ async function checkSecrets(): Promise<ComponentHealth> {
       };
     } else {
       return {
-        status: 'warn',
-        message: `Secrets manager degraded (${provider})`,
+        status: strictDependencyReadiness ? 'fail' : 'warn',
+        message: strictDependencyReadiness
+          ? `Secrets manager is in fallback mode (${provider}) in strict full production mode`
+          : `Secrets manager degraded (${provider})`,
         timestamp: new Date().toISOString(),
         duration: Date.now() - start,
         details: {
@@ -190,6 +221,7 @@ async function checkSecrets(): Promise<ComponentHealth> {
  */
 async function checkGateway(): Promise<ComponentHealth> {
   const start = Date.now();
+  const strictDependencyReadiness = isStrictFullDependencyReadinessEnabled();
 
   try {
     const gatewayManager = getGatewayManager();
@@ -206,20 +238,39 @@ async function checkGateway(): Promise<ComponentHealth> {
       };
     }
 
-    // Gateway is enabled
+    const gatewayHealth = await gatewayManager.getHealth();
+    if (!gatewayHealth.healthy) {
+      return {
+        status: strictDependencyReadiness ? 'fail' : 'warn',
+        message: strictDependencyReadiness
+          ? 'Gateway is unhealthy in strict full production mode'
+          : 'Gateway is unhealthy',
+        timestamp: new Date().toISOString(),
+        duration: Date.now() - start,
+        details: {
+          enabled: true,
+          provider: gatewayHealth.provider,
+        },
+      };
+    }
+
     return {
       status: 'pass',
-      message: 'Gateway is enabled',
+      message: 'Gateway is enabled and healthy',
       timestamp: new Date().toISOString(),
       duration: Date.now() - start,
       details: {
         enabled: true,
+        provider: gatewayHealth.provider,
+        version: gatewayHealth.version,
       },
     };
   } catch (error) {
     return {
-      status: 'warn',
-      message: 'Gateway check failed (optional)',
+      status: strictDependencyReadiness ? 'fail' : 'warn',
+      message: strictDependencyReadiness
+        ? 'Gateway check failed in strict full production mode'
+        : 'Gateway check failed (optional)',
       timestamp: new Date().toISOString(),
       duration: Date.now() - start,
     };
@@ -344,6 +395,7 @@ function determineOverallStatus(
   checks: { [key: string]: ComponentHealth }
 ): 'healthy' | 'degraded' | 'unhealthy' {
   const statuses = Object.values(checks).map((check) => check.status);
+  const strictDependencyReadiness = isStrictFullDependencyReadinessEnabled();
 
   // If any critical component fails, system is unhealthy
   if (statuses.includes('fail')) {
@@ -353,6 +405,9 @@ function determineOverallStatus(
 
     // Critical components that must pass
     const criticalComponents = ['application', 'memory', 'eventLoop'];
+    if (strictDependencyReadiness) {
+      criticalComponents.push('redis', 'secrets', 'gateway');
+    }
 
     const criticalFailure = failedChecks.some((name) =>
       criticalComponents.includes(name)
@@ -383,8 +438,25 @@ export async function isReady(): Promise<boolean> {
     // Check critical components only
     const appCheck = await checkApplication();
     const memoryCheck = await checkMemory();
+    if (!(appCheck.status === 'pass' && memoryCheck.status !== 'fail')) {
+      return false;
+    }
 
-    return appCheck.status === 'pass' && memoryCheck.status !== 'fail';
+    if (!isStrictFullDependencyReadinessEnabled()) {
+      return true;
+    }
+
+    const [redisCheck, secretsCheck, gatewayCheck] = await Promise.all([
+      checkRedis(),
+      checkSecrets(),
+      checkGateway(),
+    ]);
+
+    return (
+      redisCheck.status === 'pass' &&
+      secretsCheck.status === 'pass' &&
+      gatewayCheck.status === 'pass'
+    );
   } catch (error) {
     return false;
   }

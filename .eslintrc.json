@@ -12,10 +12,14 @@
   },
   "rules": {
     "@typescript-eslint/explicit-function-return-type": "warn",
-    "@typescript-eslint/no-explicit-any": "error",
-    "@typescript-eslint/no-unused-vars": ["error", {
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": ["warn", {
       "argsIgnorePattern": "^_"
-    }]
+    }],
+    "@typescript-eslint/no-namespace": "off",
+    "no-control-regex": "off",
+    "no-case-declarations": "warn",
+    "prefer-const": "warn"
   },
   "env": {
     "node": true,

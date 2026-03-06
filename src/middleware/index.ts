@@ -15,3 +15,4 @@ export * from './authorization.js';
 export * from './agent-auth.js';
 export * from './input-sanitization.js';
 export * from './audit-log.js';
+export * from './https-enforcement.js';

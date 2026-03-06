@@ -73,7 +73,9 @@ const store = new Map<string, RateLimitEntry>();
  *   customLimits: new Map([['premium-agent', 2000]])
  * }));
  */
-export function rateLimit(config?: RateLimitConfig): (req: Request, res: Response, next: NextFunction) => void {
+export function rateLimit(
+  config?: RateLimitConfig
+): (req: Request, res: Response, next: NextFunction) => Promise<void> {
   // Sensible defaults
   const humanLimit = config?.humanLimit ?? 100;
   const agentLimit = config?.agentLimit ?? 500;
@@ -86,17 +88,22 @@ export function rateLimit(config?: RateLimitConfig): (req: Request, res: Respons
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const now = Date.now();
 
-    // Generate key from IP and agent ID
+    // Generate key from authenticated principal (never trust header-only agent ID)
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const agentId = req.agentContext?.identification.agentId;
-    const key = agentId ? `${ip}:${agentId}` : ip;
+    const authenticatedAgentId = req.agent?.id;
+    const authenticatedUserId = req.user?.id;
+    const key = authenticatedAgentId
+      ? `agent:${authenticatedAgentId}`
+      : authenticatedUserId
+      ? `user:${authenticatedUserId}`
+      : `ip:${ip}`;
 
     // Determine limit based on agent type
-    const isAgent = req.agentContext?.identification.agentType !== 'human';
+    const isAgent = Boolean(authenticatedAgentId);
     let limit = humanLimit;
 
-    if (agentId && customLimits?.has(agentId)) {
-      limit = customLimits.get(agentId)!;
+    if (authenticatedAgentId && customLimits?.has(authenticatedAgentId)) {
+      limit = customLimits.get(authenticatedAgentId)!;
     } else if (isAgent) {
       limit = agentLimit;
     }

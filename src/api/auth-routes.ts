@@ -17,12 +17,36 @@ import {
   findUserById,
 } from '../auth/user-store.js';
 import {
-  generateTokenPair,
+  generateTokenPairWithMetadata,
   verifyRefreshToken,
 } from '../auth/jwt-utils.js';
 import { requireAuth } from '../middleware/auth.js';
+import {
+  isRefreshTokenSessionActive,
+  revokeRefreshTokenSession,
+  storeRefreshTokenSession,
+  revokeAllUserRefreshTokenSessions,
+} from '../auth/refresh-token-store.js';
+import {
+  isLoginAttemptAllowed,
+  recordFailedLoginAttempt,
+  clearFailedLoginAttempts,
+} from '../auth/login-attempt-guard.js';
+import { AuditEvent, logSecurityEvent } from '../observability/audit-logger.js';
 
 const router = Router();
+
+function escalateRefreshTokenReuse(req: Request, userId: string, jti: string): void {
+  revokeAllUserRefreshTokenSessions(userId);
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  logSecurityEvent(AuditEvent.TOKEN_REUSE_DETECTED, {
+    ip: clientIp,
+    userId,
+    path: req.path,
+    description: 'Refresh token reuse detected; all sessions revoked',
+    metadata: { refreshTokenId: jti },
+  });
+}
 
 /**
  * POST /api/auth/register
@@ -98,7 +122,8 @@ router.post('/register', async (req: Request, res: Response, next) => {
       const user = await createUser(email, password, name, userRole);
 
       // Generate tokens
-      const tokens = generateTokenPair(user);
+      const { tokens, refreshTokenId, refreshTokenExpiresAt } = generateTokenPairWithMetadata(user);
+      storeRefreshTokenSession(refreshTokenId, user.id, refreshTokenExpiresAt);
 
       res.status(201).json({
         data: {
@@ -134,6 +159,7 @@ router.post('/register', async (req: Request, res: Response, next) => {
 router.post('/login', async (req: Request, res: Response, next) => {
   try {
     const { email, password } = req.body;
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
 
     // Validation
     if (!email || !password) {
@@ -150,9 +176,48 @@ router.post('/login', async (req: Request, res: Response, next) => {
       );
     }
 
+    const loginAllowed = await isLoginAttemptAllowed(clientIp, email);
+    if (!loginAllowed.allowed) {
+      const retryAfterSeconds = loginAllowed.retryAfterSeconds || 60;
+      res.setHeader('Retry-After', retryAfterSeconds.toString());
+      throw new ApiError(
+        429,
+        ErrorCode.RATE_LIMIT_EXCEEDED,
+        'Too many failed login attempts. Try again later.',
+        'email',
+        [{
+          code: 'LOGIN_TEMPORARILY_LOCKED',
+          message: 'Account or IP temporarily locked due to repeated failed logins',
+          suggestion: `Wait ${retryAfterSeconds} seconds before trying again`,
+        }]
+      );
+    }
+
     // Find user
     const user = findUserByEmail(email);
     if (!user) {
+      const lockout = await recordFailedLoginAttempt(clientIp, email);
+      logSecurityEvent(AuditEvent.USER_LOGIN_FAILED, {
+        ip: clientIp,
+        path: req.path,
+        description: `Failed login attempt for unknown user ${email}`,
+      });
+      if (lockout.locked) {
+        const retryAfterSeconds = lockout.retryAfterSeconds || 60;
+        res.setHeader('Retry-After', retryAfterSeconds.toString());
+        throw new ApiError(
+          429,
+          ErrorCode.RATE_LIMIT_EXCEEDED,
+          'Too many failed login attempts. Try again later.',
+          'email',
+          [{
+            code: 'LOGIN_TEMPORARILY_LOCKED',
+            message: 'Account or IP temporarily locked due to repeated failed logins',
+            suggestion: `Wait ${retryAfterSeconds} seconds before trying again`,
+          }]
+        );
+      }
+
       // Don't reveal whether user exists (security best practice)
       throw new ApiError(
         401,
@@ -170,6 +235,32 @@ router.post('/login', async (req: Request, res: Response, next) => {
     // Verify password
     const isValid = await verifyPassword(user, password);
     if (!isValid) {
+      const lockout = await recordFailedLoginAttempt(clientIp, email);
+      if (lockout.locked) {
+        const retryAfterSeconds = lockout.retryAfterSeconds || 60;
+        res.setHeader('Retry-After', retryAfterSeconds.toString());
+      }
+      logSecurityEvent(AuditEvent.USER_LOGIN_FAILED, {
+        ip: clientIp,
+        userId: user.id,
+        path: req.path,
+        description: `Failed login attempt for ${email}`,
+      });
+
+      if (lockout.locked) {
+        throw new ApiError(
+          429,
+          ErrorCode.RATE_LIMIT_EXCEEDED,
+          'Too many failed login attempts. Try again later.',
+          'email',
+          [{
+            code: 'LOGIN_TEMPORARILY_LOCKED',
+            message: 'Account or IP temporarily locked due to repeated failed logins',
+            suggestion: `Wait ${lockout.retryAfterSeconds || 60} seconds before trying again`,
+          }]
+        );
+      }
+
       throw new ApiError(
         401,
         ErrorCode.UNAUTHORIZED,
@@ -185,9 +276,11 @@ router.post('/login', async (req: Request, res: Response, next) => {
 
     // Update last login
     updateLastLogin(user.id);
+    await clearFailedLoginAttempts(clientIp, email);
 
     // Generate tokens
-    const tokens = generateTokenPair(user);
+    const { tokens, refreshTokenId, refreshTokenExpiresAt } = generateTokenPairWithMetadata(user);
+    storeRefreshTokenSession(refreshTokenId, user.id, refreshTokenExpiresAt);
 
     res.status(200).json({
       data: {
@@ -256,6 +349,22 @@ router.post('/refresh', async (req: Request, res: Response, next) => {
       );
     }
 
+    // Check refresh token revocation/rotation state
+    if (!isRefreshTokenSessionActive(payload.jti)) {
+      escalateRefreshTokenReuse(req, payload.userId, payload.jti);
+      throw new ApiError(
+        401,
+        ErrorCode.UNAUTHORIZED,
+        'Refresh token is no longer valid',
+        'refreshToken',
+        [{
+          code: 'REFRESH_TOKEN_REVOKED',
+          message: 'Refresh token was revoked or already used',
+          suggestion: 'Login again to establish a new session',
+        }]
+      );
+    }
+
     // Find user
     const user = findUserById(payload.userId);
     if (!user) {
@@ -272,8 +381,26 @@ router.post('/refresh', async (req: Request, res: Response, next) => {
       );
     }
 
-    // Generate new token pair
-    const tokens = generateTokenPair(user);
+    // Generate new token pair and rotate refresh session
+    const { tokens, refreshTokenId, refreshTokenExpiresAt } = generateTokenPairWithMetadata(user);
+    storeRefreshTokenSession(refreshTokenId, user.id, refreshTokenExpiresAt);
+    const rotated = revokeRefreshTokenSession(payload.jti, refreshTokenId);
+    if (!rotated) {
+      // Defensive cleanup for concurrent refresh replay attempts.
+      revokeRefreshTokenSession(refreshTokenId);
+      escalateRefreshTokenReuse(req, payload.userId, payload.jti);
+      throw new ApiError(
+        401,
+        ErrorCode.UNAUTHORIZED,
+        'Refresh token is no longer valid',
+        'refreshToken',
+        [{
+          code: 'REFRESH_TOKEN_REPLAYED',
+          message: 'Refresh token was already used',
+          suggestion: 'Login again to establish a new session',
+        }]
+      );
+    }
 
     res.status(200).json({
       data: tokens,
@@ -308,16 +435,79 @@ router.get('/me', requireAuth, (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/logout
- * Logout (client-side token deletion)
- *
- * Note: Since we're using stateless JWT, logout is primarily client-side.
- * In production, implement token blacklisting for immediate revocation.
+ * Logout and revoke refresh token session
  */
-router.post('/logout', requireAuth, (_req: Request, res: Response) => {
+router.post('/logout', requireAuth, (req: Request, res: Response, next) => {
+  try {
+    const { refreshToken } = req.body || {};
+
+    if (!refreshToken) {
+      throw new ApiError(
+        400,
+        ErrorCode.MISSING_REQUIRED_FIELD,
+        'Refresh token is required for logout',
+        'refreshToken',
+        [{
+          code: 'MISSING_REFRESH_TOKEN',
+          message: 'No refresh token provided',
+          suggestion: 'Include refreshToken in request body to revoke the session',
+        }]
+      );
+    }
+
+    let payload;
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      throw new ApiError(
+        401,
+        ErrorCode.UNAUTHORIZED,
+        'Invalid refresh token',
+        'refreshToken',
+        [{
+          code: 'INVALID_REFRESH_TOKEN',
+          message: 'Refresh token is invalid or malformed',
+          suggestion: 'Login again and use the latest refresh token',
+        }]
+      );
+    }
+
+    if (payload.userId !== req.user!.id) {
+      throw new ApiError(
+        403,
+        ErrorCode.FORBIDDEN,
+        'Refresh token does not belong to authenticated user',
+        'refreshToken',
+        [{
+          code: 'TOKEN_USER_MISMATCH',
+          message: 'Cannot revoke another user\'s session token',
+          suggestion: 'Use the refresh token issued for the current account',
+        }]
+      );
+    }
+
+    revokeRefreshTokenSession(payload.jti);
+
+    res.status(200).json({
+      data: {
+        message: 'Logged out successfully',
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/auth/logout-all
+ * Revoke all refresh token sessions for authenticated user
+ */
+router.post('/logout-all', requireAuth, (req: Request, res: Response) => {
+  const revokedCount = revokeAllUserRefreshTokenSessions(req.user!.id);
   res.status(200).json({
     data: {
-      message: 'Logged out successfully',
-      suggestion: 'Delete your access and refresh tokens from client storage',
+      message: 'All sessions revoked successfully',
+      revokedSessions: revokedCount,
     },
   });
 });

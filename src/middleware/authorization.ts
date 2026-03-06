@@ -7,6 +7,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '../types/auth.js';
 import { ErrorCode } from '../types/errors.js';
+import { withDocUrl } from '../utils/docs-url.js';
 
 /**
  * Require specific role(s) to access endpoint
@@ -38,7 +39,7 @@ export function requireRole(...allowedRoles: UserRole[]) {
             message: 'You must be authenticated to access this resource',
             suggestion: 'Login via POST /api/auth/login to get an access token',
           }],
-          doc_url: 'https://docs.example.com/auth',
+          ...withDocUrl('/auth'),
         },
       });
       return;
@@ -57,7 +58,7 @@ export function requireRole(...allowedRoles: UserRole[]) {
             message: `Your role (${req.user.role}) doesn't have permission to perform this action`,
             suggestion: `Contact your administrator to upgrade your role to ${formatRoles(allowedRoles)}`,
           }],
-          doc_url: 'https://docs.example.com/permissions',
+          ...withDocUrl('/permissions'),
         },
       });
       return;

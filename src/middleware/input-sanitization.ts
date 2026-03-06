@@ -13,6 +13,7 @@ import { Request, Response, NextFunction } from 'express';
 import xss from 'xss';
 import validator from 'validator';
 import { ErrorCode } from '../types/errors.js';
+import { withDocUrl } from '../utils/docs-url.js';
 
 /**
  * XSS Options - Allow safe HTML for specific use cases
@@ -258,7 +259,7 @@ export function detectInjectionAttacks(req: Request, res: Response, next: NextFu
           message: 'Input contains suspicious patterns',
           suggestion: 'Remove special characters and try again',
         }],
-        doc_url: 'https://docs.example.com/security/input-validation',
+        ...withDocUrl('/security/input-validation'),
       },
     });
     return;

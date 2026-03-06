@@ -13,6 +13,7 @@ import { mkdirSync, rmSync } from 'fs';
 import path from 'path';
 import { initializeDatabase } from '../db/database.js';
 import { initializeDefaultUsers } from '../auth/user-store.js';
+import { resetLoginAttemptGuards } from '../auth/login-attempt-guard.js';
 import authRoutes from './auth-routes.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import { requestIdMiddleware } from '../middleware/request-id.js';
@@ -44,6 +45,9 @@ beforeAll(async () => {
 afterAll(() => {
   try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
   delete process.env.DATABASE_URL;
+  delete process.env.LOGIN_MAX_ATTEMPTS;
+  delete process.env.LOGIN_ATTEMPT_WINDOW_MS;
+  delete process.env.LOGIN_LOCKOUT_DURATION_MS;
 });
 
 describe('POST /api/auth/register', () => {
@@ -96,6 +100,12 @@ describe('POST /api/auth/register', () => {
 describe('POST /api/auth/login', () => {
   const testEmail = `login-test-${Date.now()}@example.com`;
 
+  beforeAll(() => {
+    process.env.LOGIN_MAX_ATTEMPTS = '2';
+    process.env.LOGIN_ATTEMPT_WINDOW_MS = '60000';
+    process.env.LOGIN_LOCKOUT_DURATION_MS = '60000';
+  });
+
   beforeAll(async () => {
     await request(app)
       .post('/api/auth/register')
@@ -121,6 +131,7 @@ describe('POST /api/auth/login', () => {
   });
 
   it('returns 200 with tokens for valid credentials', async () => {
+    await resetLoginAttemptGuards();
     const res = await request(app)
       .post('/api/auth/login')
       .send({ email: testEmail, password: 'mypassword' });
@@ -128,6 +139,32 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.accessToken).toBeDefined();
     expect(res.body.data.refreshToken).toBeDefined();
+  });
+
+  it('returns 429 and Retry-After once lockout threshold is exceeded', async () => {
+    const email = `locked-${Date.now()}@example.com`;
+    await request(app)
+      .post('/api/auth/register')
+      .send({ email, password: 'mypassword', name: 'Locked User' });
+
+    const first = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'wrongpassword' });
+
+    const second = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'wrongpassword' });
+
+    const locked = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password: 'mypassword' });
+
+    expect(first.status).toBe(401);
+    expect(second.status).toBe(429);
+    expect(second.headers['retry-after']).toBeDefined();
+    expect(locked.status).toBe(429);
+    expect(locked.headers['retry-after']).toBeDefined();
+    await resetLoginAttemptGuards();
   });
 });
 
