@@ -11,7 +11,7 @@ build/
 *.tsbuildinfo
 
 # Generated tool definitions
-tools/
+/tools/
 
 # Environment variables
 .env
@@ -44,7 +44,7 @@ temp/
 # API keys and secrets
 *.pem
 *.key
-secrets/
+/secrets/
 credentials.json
 logs/
 certs/
