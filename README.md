@@ -592,6 +592,7 @@ Production deployments should explicitly enforce:
 - non-default durable `DATABASE_URL`
 
 See [Authentication System](./AUTHENTICATION.md), [Security Guidelines](./SECURITY.md), and [Deployment](#-deployment).
+For private-repo merge/release operations, use [Publishing Checklist](./PUBLISHING_CHECKLIST.md).
 
 ### 🔐 Default Credentials (Development Only)
 
@@ -1247,6 +1248,8 @@ Before making this repository public:
    - `npm run test:targeted`
    - `npm run smoke:startup`
    - `npm run preflight:prod-env`
+
+For current private-repo publishing flow on plans without branch protection/rulesets, see [Publishing Checklist](./PUBLISHING_CHECKLIST.md).
 
 ## 🤝 Contributing
 
