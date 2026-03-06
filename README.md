@@ -2,6 +2,12 @@
 
 A TypeScript/Express API platform for human and agent clients, with OpenAPI specs, auth, security controls, and operational checks.
 
+## What This Platform Is
+
+- A production-oriented starter platform for building APIs used by both humans and AI agents
+- A reference implementation for secure auth, operational hardening, and API governance
+- A practical baseline you can run as-is, then extend with your own domain routes and data model
+
 ## What You Get
 
 - JWT auth for users and API-key auth for agents
@@ -9,6 +15,12 @@ A TypeScript/Express API platform for human and agent clients, with OpenAPI spec
 - Rate limiting, security headers, and startup validation checks
 - Optional gateway/monitoring/secrets features via full profile
 - CI workflows for minimal gate and extended validation
+
+## What This Platform Is Not
+
+- Not a complete enterprise product out of the box (SSO, compliance workflows, and org-specific controls are still your responsibility)
+- Not tied to a single cloud or gateway vendor
+- Not a replacement for your business logic, domain models, or production runbooks
 
 ## Prerequisites
 
