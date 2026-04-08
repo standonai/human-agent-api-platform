@@ -47,7 +47,7 @@
     "better-sqlite3": "^12.6.2",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "^0.45.2",
     "express": "^4.18.2",
     "helmet": "^8.1.0",
     "ioredis": "^5.4.1",
