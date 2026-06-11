@@ -81,6 +81,27 @@ interface AgentCallRecord {
 const agentCallHistory: AgentCallRecord[] = [];
 const MAX_AGENT_HISTORY = 1000;
 
+type ZeroShotRateListener = (rate: number) => void;
+const zeroShotRateListeners: ZeroShotRateListener[] = [];
+
+/**
+ * Subscribe to zero-shot success rate updates (e.g. to publish a
+ * Prometheus gauge). Listeners are invoked on every tracked agent call.
+ */
+export function onZeroShotRate(listener: ZeroShotRateListener): void {
+  zeroShotRateListeners.push(listener);
+}
+
+/**
+ * Current zero-shot success rate over the rolling window (1 when no data).
+ */
+export function getZeroShotRate(): number {
+  const total = agentCallHistory.length;
+  if (total === 0) return 1;
+  const successes = agentCallHistory.filter(r => r.firstAttempt).length;
+  return successes / total;
+}
+
 export function trackAgentCall(agentId: string, endpoint: string): void {
   const key = `${agentId}:${endpoint}`;
   const now = Date.now();
@@ -94,15 +115,14 @@ export function trackAgentCall(agentId: string, endpoint: string): void {
     agentCallHistory.shift();
   }
 
-  // Recalculate and publish gauge
-  const total = agentCallHistory.length;
-  const successes = agentCallHistory.filter(r => r.firstAttempt).length;
-  const rate = total > 0 ? successes / total : 1;
-
-  // Lazy import to avoid circular dependency
-  import('../monitoring/prometheus-exporter.js').then(({ agentZeroShotSuccessRate }) => {
-    agentZeroShotSuccessRate.set(rate);
-  }).catch(() => { /* monitoring unavailable */ });
+  const rate = getZeroShotRate();
+  for (const listener of zeroShotRateListeners) {
+    try {
+      listener(rate);
+    } catch {
+      // Listeners must not break request handling
+    }
+  }
 }
 
 class MetricsStore {

@@ -17,51 +17,48 @@ published eval.
 
 ---
 
-## Phase 0 — Cut and clean *(in progress)*
+## Phase 0 — Cut and clean *(complete — PR #13)*
 
 Make the repo honest before restructuring it.
 
-- [ ] Delete `src/gateway/` (~2,000 LOC), `src/cli/sync-gateway.ts`,
+- [x] Delete `src/gateway/` (~2,000 LOC), `src/cli/sync-gateway.ts`,
       `src/api/gateway-routes.ts`, the `gateway:*` npm scripts, and gateway
-      paths/tags in the OpenAPI spec. Gateway sync moves to its own repo if
-      it has a future.
-- [ ] Trim `src/secrets/` to the env provider plus the provider interface.
-      Vault/AWS/Azure become "implement the interface" documentation, not
-      shipped code. Drop the cloud SDK optionalDependencies.
-- [ ] Remove tracked `dist/`, `logs/`, `data/*.db*`, and `certs/` from git
-      (already gitignored, but committed before the ignore rules existed).
-- [ ] Remove the seeded `admin@example.com` / `admin123` account. Replace
-      with an explicit bootstrap path that generates a random password and
-      prints it once.
-- [ ] Reconcile README ↔ CLAUDE.md (profiles, commands, env vars).
+      paths/tags in the OpenAPI spec.
+- [x] Trim `src/secrets/` to the env provider plus the provider interface.
+      Vault/AWS/Azure are "implement the interface" documentation, not
+      shipped code. Cloud SDK optionalDependencies dropped.
+- [x] Verify `dist/`, `logs/`, `data/*.db*`, and `certs/` are untracked
+      (they already were — only present locally).
+- [x] Remove the `admin123` bootstrap default. Seeding now generates a
+      random password printed once unless `BOOTSTRAP_ADMIN_PASSWORD` is set.
+- [x] Reconcile README ↔ CLAUDE.md (profiles, commands, env vars).
 
-**Done when:** tests pass, `lint:api` is clean, the repo is ~5k LOC lighter,
-and a fresh clone contains no secrets, build outputs, or databases.
-
-## Phase 1 — Restructure into a toolkit + reference app
+## Phase 1 — Restructure into a toolkit + reference app *(complete)*
 
 Convert the asset from "a monolith" into "things people can install."
 
-- Convert to npm workspaces:
+- [x] Convert to npm workspaces:
 
   ```
   packages/
     agent-errors/      # envelope types, ApiError, error-builder, doc-url,
-                       # Spectral ruleset as an exportable artifact
+                       # Express error handler, Spectral ruleset artifact
     agent-dry-run/     # dryRunMiddleware + withDryRun
-    agent-metrics/     # zero-shot tracking, trackAgentCall, Prometheus exporter
+    agent-metrics/     # agent detection, metrics store, zero-shot tracking
+                       # (Prometheus-free: publish via onZeroShotRate())
   apps/
-    reference/         # the current server, consuming the packages
+    reference/         # the platform server, consuming the packages
   ```
 
-- Packages stay framework-light: Express adapters now, core logic in plain
-  functions so Hono/Fastify adapters are thin files later.
-- Versioning via changesets; publish under a single npm scope.
-- The reference app keeps tasks-CRUD as an explicitly-labeled demo domain.
-
-**Done when:** `npm install <scope>/agent-errors` works in an external
-project and yields the envelope + Spectral rules without the rest of the
-platform.
+- [x] Packages are framework-light: Express adapters only, core logic in
+      plain functions; no prom-client dependency (the app's exporter
+      subscribes via `onZeroShotRate`).
+- [x] Verified externally: `npm pack` + install in a fresh project yields
+      working envelope, dry-run, zero-shot tracking, and the Spectral
+      ruleset artifact.
+- [ ] Versioning/publish pipeline (changesets + npm publish under the
+      `@standonai` scope) — deferred until first publish; scope name is
+      rename-safe until then.
 
 ## Phase 2 — MCP-native surface
 

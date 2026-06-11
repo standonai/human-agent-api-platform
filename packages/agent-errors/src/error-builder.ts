@@ -2,7 +2,7 @@
  * Utility for building standardized error responses
  */
 
-import { ErrorResponse, ApiError, ErrorDetail, ErrorCode } from '../types/errors.js';
+import { ErrorResponse, ApiError, ErrorDetail, ErrorCode } from './errors.js';
 
 export class ErrorBuilder {
   private error: ApiError;

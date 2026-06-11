@@ -13,6 +13,7 @@
 
 import { Registry, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
 import { Request, Response, NextFunction } from 'express';
+import { onZeroShotRate } from '@standonai/agent-metrics';
 
 // Create separate registry for application metrics
 export const register = new Registry();
@@ -160,6 +161,9 @@ export const agentZeroShotSuccessRate = new Gauge({
   help: 'Ratio of agent API calls that succeed on the first attempt (no retry within 60s)',
   registers: [register],
 });
+
+// @standonai/agent-metrics computes the rate; this gauge publishes it.
+onZeroShotRate((rate) => agentZeroShotSuccessRate.set(rate));
 
 /**
  * Cache Metrics

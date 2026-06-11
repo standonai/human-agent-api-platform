@@ -4,8 +4,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { AgentContext, AgentIdentification } from '../types/agent.js';
-import { trackAgentCall } from '../observability/metrics-store.js';
+import { AgentContext, AgentIdentification } from './agent-types.js';
+import { trackAgentCall } from './metrics-store.js';
 
 declare global {
   namespace Express {
@@ -71,7 +71,7 @@ export function agentTrackingMiddleware(req: Request, res: Response, next: NextF
   // Create agent context
   req.agentContext = {
     identification,
-    requestId: req.requestId || 'unknown',
+    requestId: (req as Request & { requestId?: string }).requestId || 'unknown',
     timestamp: new Date(),
   };
 

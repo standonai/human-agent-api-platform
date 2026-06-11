@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response } from 'express';
 import { errorHandler, ApiError } from './error-handler.js';
-import { ErrorCode } from '../types/errors.js';
+import { ErrorCode } from './errors.js';
 
 function makeReq(overrides: Partial<Request> = {}): Request {
   return { requestId: 'req_test', ...overrides } as Request;

@@ -20,28 +20,41 @@ Before implementing any feature, ask these questions:
 
 These principles prioritize: **Simplicity** over flexibility · **Clarity** over comprehensiveness · **Defaults** over configuration · **User value** over technical sophistication.
 
+## Repo Layout (npm workspaces, Phase 1)
+
+```
+packages/agent-errors/     # error envelope + ErrorBuilder + Express errorHandler + Spectral ruleset
+packages/agent-dry-run/    # dryRunMiddleware + withDryRun
+packages/agent-metrics/    # agent detection, metrics store, zero-shot tracking (onZeroShotRate)
+apps/reference/            # the platform server, consuming the packages
+```
+
+Run npm scripts from the repo root — they delegate into workspaces. The app
+modules that were extracted remain as one-line re-export shims (e.g.
+`apps/reference/src/types/errors.ts`) so internal imports stay stable.
+
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/server.ts` | Main server; middleware stack order documented here |
-| `src/db/database.ts` | SQLite singleton (Drizzle ORM); schema for users/agents/tasks |
-| `src/db/task-store.ts` | DB-backed task CRUD (synchronous, better-sqlite3) |
-| `src/auth/user-store.ts` | User CRUD + password hashing |
-| `src/auth/agent-store.ts` | Agent CRUD + API key management |
-| `src/auth/jwt-utils.ts` | JWT access/refresh token generation + verification |
-| `src/middleware/ownership.ts` | Simple ownership check: `requireOwnerOrAdmin(type, loader)` |
-| `src/middleware/authorization.ts` | RBAC: `requireRole`, `requireAdmin`, `requireAdminOrDeveloper` |
-| `src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
-| `src/observability/metrics-store.ts` | In-memory metrics + `trackAgentCall()` for zero-shot rate |
-| `src/monitoring/prometheus-exporter.ts` | Prometheus gauges/counters including `agent_zero_shot_success_rate` |
-| `specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec (30+ endpoints) |
-| `specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec (17 channels, Redis+HTTP bindings) |
-| `.spectral.yaml` | 18 custom Spectral rules; every error response MUST have `suggestion` field |
+| `apps/reference/src/server.ts` | Main server; middleware stack order documented here |
+| `apps/reference/src/db/database.ts` | SQLite singleton (Drizzle ORM); schema for users/agents/tasks |
+| `apps/reference/src/db/task-store.ts` | DB-backed task CRUD (synchronous, better-sqlite3) |
+| `apps/reference/src/auth/user-store.ts` | User CRUD + password hashing + bootstrap seeding |
+| `apps/reference/src/auth/agent-store.ts` | Agent CRUD + API key management |
+| `apps/reference/src/middleware/ownership.ts` | Simple ownership check: `requireOwnerOrAdmin(type, loader)` |
+| `apps/reference/src/middleware/authorization.ts` | RBAC: `requireRole`, `requireAdmin`, `requireAdminOrDeveloper` |
+| `apps/reference/src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
+| `packages/agent-metrics/src/metrics-store.ts` | In-memory metrics + `trackAgentCall()` + `onZeroShotRate()` |
+| `apps/reference/src/monitoring/prometheus-exporter.ts` | Prometheus gauges incl. `agent_zero_shot_success_rate` (subscribes to agent-metrics) |
+| `apps/reference/specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec |
+| `apps/reference/specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec (17 channels, Redis+HTTP bindings) |
+| `packages/agent-errors/spectral.yaml` | 18 custom Spectral rules; every error response MUST have `suggestion` (app's `.spectral.yaml` extends it) |
 
 ## Architecture
 
-- **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
+- **Monorepo**: npm workspaces; three publishable packages (`@standonai/agent-errors`, `@standonai/agent-dry-run`, `@standonai/agent-metrics`) + the private reference app. Package `prepare` scripts build `dist/` on install; vitest aliases resolve packages to source.
+- **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db` relative to `apps/reference`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
 - **Rate limiting**: Redis sliding window (100 human / 500 agent req/min), in-memory fallback.
 - **Auth**: JWT (1h access, 7d refresh) + agent API keys (SHA-256 hashed).
 - **Secrets**: Environment-variable provider built in; external managers (Vault/AWS/Azure) by implementing the `SecretsProvider` interface in `src/secrets/secrets-manager.ts`.
@@ -97,7 +110,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 250 tests passing across 36 test files, 0 failures.
+**Test coverage**: 125 tests passing across 18 test files, 0 failures. (Older docs said 250/36 — that count double-counted stale compiled copies in an untracked `dist/`.)
 
 ## Environment Variables
 

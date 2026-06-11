@@ -10,10 +10,15 @@ A TypeScript/Express API platform for human and agent clients, with OpenAPI spec
 
 ## What You Get
 
-- JWT auth for users and API-key auth for agents
-- OpenAPI-first API definitions and linting
-- Rate limiting, security headers, and startup validation checks
-- Optional monitoring/audit/secrets features via full profile
+- **Installable toolkit packages** (npm workspaces):
+  - [`@standonai/agent-errors`](./packages/agent-errors) — agent-parseable error envelope with mandatory `suggestion`, Express error handler, Spectral ruleset
+  - [`@standonai/agent-dry-run`](./packages/agent-dry-run) — `?dry_run=true` validation-without-execution for mutations
+  - [`@standonai/agent-metrics`](./packages/agent-metrics) — agent detection + zero-shot success rate tracking
+- A reference platform ([`apps/reference`](./apps/reference)) built on those packages:
+  - JWT auth for users and API-key auth for agents
+  - OpenAPI-first API definitions and linting
+  - Rate limiting, security headers, and startup validation checks
+  - Optional monitoring/audit/secrets features via full profile
 - CI workflows for minimal gate and extended validation
 
 ## What This Platform Is Not
@@ -32,12 +37,14 @@ A TypeScript/Express API platform for human and agent clients, with OpenAPI spec
 
 ```bash
 npm ci
-cp .env.example .env
+cp apps/reference/.env.example apps/reference/.env
 ```
+
+All npm scripts run from the repo root and delegate into the workspaces.
 
 ## Required Local Configuration
 
-Set these in `.env` before running:
+Set these in `apps/reference/.env` before running:
 
 ```env
 JWT_SECRET=<long-random-secret>
@@ -137,7 +144,7 @@ npm run security:audit
 - [Authorization](./AUTHORIZATION.md)
 - [Security](./SECURITY.md)
 - [Contributing](./CONTRIBUTING.md)
-- [OpenAPI Spec](./specs/openapi/platform-api.yaml)
+- [OpenAPI Spec](./apps/reference/specs/openapi/platform-api.yaml)
 
 ## License
 

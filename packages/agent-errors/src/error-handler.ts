@@ -4,8 +4,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { ErrorCode } from '../types/errors.js';
-import { ErrorBuilder } from '../utils/error-builder.js';
+import { ErrorCode } from './errors.js';
+import { ErrorBuilder } from './error-builder.js';
 
 /**
  * Custom API Error class
@@ -55,7 +55,7 @@ export function errorHandler(config: ErrorHandlerConfig = {}) {
       return next(err);
     }
 
-    const requestId = req.requestId || 'unknown';
+    const requestId = (req as Request & { requestId?: string }).requestId || 'unknown';
 
     // 🔒 Security: Log full error details internally (never sent to client)
     console.error('🚨 Error occurred:', {

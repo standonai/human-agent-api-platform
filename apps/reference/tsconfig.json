@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@standonai/agent-errors": ["../../packages/agent-errors/src/index.ts"],
+      "@standonai/agent-errors/*": ["../../packages/agent-errors/src/*"],
+      "@standonai/agent-dry-run": ["../../packages/agent-dry-run/src/index.ts"],
+      "@standonai/agent-metrics": ["../../packages/agent-metrics/src/index.ts"],
+      "@standonai/agent-metrics/*": ["../../packages/agent-metrics/src/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Request, Response } from 'express';
-import { dryRunMiddleware, isDryRun } from './dry-run.js';
+import { dryRunMiddleware, isDryRun } from './index.js';
 
 describe('dryRunMiddleware', () => {
   it('should detect dry_run=true query parameter', () => {

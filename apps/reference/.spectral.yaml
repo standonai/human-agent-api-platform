@@ -1,0 +1,4 @@
+# The agent-friendly API ruleset lives in @standonai/agent-errors so any
+# consumer of the toolkit can enforce the same error-envelope contract.
+extends:
+  - ../../packages/agent-errors/spectral.yaml

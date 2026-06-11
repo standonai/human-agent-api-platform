@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ErrorBuilder, createErrorResponse } from './error-builder.js';
-import { ErrorCode } from '../types/errors.js';
+import { ErrorCode } from './errors.js';
 
 describe('ErrorBuilder', () => {
   it('should build a basic error response', () => {
