@@ -51,6 +51,8 @@ tags:
     description: Prometheus metrics and health checks
   - name: converter
     description: OpenAPI to tool definition conversion
+  - name: mcp
+    description: Model Context Protocol server and agent discovery
 
 paths:
   # ==========================================================================
@@ -2819,6 +2821,110 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # MCP (Model Context Protocol)
+  # ==========================================================================
+  /mcp:
+    post:
+      operationId: mcpRequest
+      summary: MCP server endpoint (streamable HTTP, stateless)
+      tags:
+        - mcp
+      description: |
+        JSON-RPC 2.0 endpoint implementing the Model Context Protocol over
+        the streamable HTTP transport. Tools are generated from this OpenAPI
+        spec; calling a tool dispatches a real API request through the full
+        middleware stack. Forward user JWTs (Authorization) or agent keys
+        (X-Agent-ID/X-Agent-Key) — they are applied to dispatched calls.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A JSON-RPC 2.0 request (initialize, tools/list, tools/call)
+            example:
+              jsonrpc: '2.0'
+              id: 1
+              method: tools/list
+              params: {}
+      responses:
+        '200':
+          description: JSON-RPC 2.0 response
+          content:
+            application/json:
+              schema:
+                type: object
+                description: JSON-RPC 2.0 response envelope
+              example:
+                jsonrpc: '2.0'
+                id: 1
+                result:
+                  tools: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /.well-known/mcp.json:
+    get:
+      operationId: getMcpDiscovery
+      summary: MCP discovery metadata
+      tags:
+        - mcp
+      description: Machine-readable metadata for MCP clients (endpoint, transport, auth schemes).
+      responses:
+        '200':
+          description: Discovery document
+          content:
+            application/json:
+              schema:
+                type: object
+                description: MCP discovery metadata
+                properties:
+                  name:
+                    type: string
+                    description: Server name
+                  endpoint:
+                    type: string
+                    description: Absolute URL of the MCP endpoint
+                  transport:
+                    type: string
+                    description: MCP transport in use
+                  tool_count:
+                    type: integer
+                    description: Number of exposed tools
+              example:
+                name: human-agent-api-platform
+                endpoint: https://api.example.com/mcp
+                transport: streamable-http
+                tool_count: 12
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /llms.txt:
+    get:
+      operationId: getLlmsTxt
+      summary: Agent-readable API overview
+      tags:
+        - mcp
+      description: Plain-text overview of the API generated from this spec, following the llms.txt convention.
+      responses:
+        '200':
+          description: llms.txt document
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Markdown-formatted API overview for LLM consumption
+              example: "# Human-Agent API Platform"
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 

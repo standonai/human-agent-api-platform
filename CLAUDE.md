@@ -47,7 +47,9 @@ modules that were extracted remain as one-line re-export shims (e.g.
 | `apps/reference/src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
 | `packages/agent-metrics/src/metrics-store.ts` | In-memory metrics + `trackAgentCall()` + `onZeroShotRate()` |
 | `apps/reference/src/monitoring/prometheus-exporter.ts` | Prometheus gauges incl. `agent_zero_shot_success_rate` (subscribes to agent-metrics) |
-| `apps/reference/specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec |
+| `apps/reference/src/tools/mcp-converter.ts` | OpenAPI → MCP tool generator (annotations, dry_run mapping) |
+| `apps/reference/src/mcp/` | MCP server at `/mcp` (streamable HTTP) + tool catalog + `/.well-known/mcp.json` + `/llms.txt` |
+| `apps/reference/specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec — also the source of truth for MCP tools |
 | `apps/reference/specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec (17 channels, Redis+HTTP bindings) |
 | `packages/agent-errors/spectral.yaml` | 18 custom Spectral rules; every error response MUST have `suggestion` (app's `.spectral.yaml` extends it) |
 
@@ -60,6 +62,7 @@ modules that were extracted remain as one-line re-export shims (e.g.
 - **Secrets**: Environment-variable provider built in; external managers (Vault/AWS/Azure) by implementing the `SecretsProvider` interface in `src/secrets/secrets-manager.ts`.
 - **TLS**: Handled by the reverse proxy (nginx/caddy), not in-app.
 - **Authorization**: Simple ownership check in `src/middleware/ownership.ts` replaces OWASP policy engine.
+- **MCP**: `/mcp` serves spec-generated tools over streamable HTTP (stateless). Tool calls dispatch as loopback HTTP through the full middleware stack — REST and MCP semantics are identical; auth headers are forwarded. Admin tags excluded by default (`MCP_TOOL_TAGS` overrides). `/mcp` is exempt from injection detection (dispatched calls are still checked).
 
 ## Middleware Stack (Execution Order in server.ts)
 
@@ -110,7 +113,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 125 tests passing across 18 test files, 0 failures. (Older docs said 250/36 — that count double-counted stale compiled copies in an untracked `dist/`.)
+**Test coverage**: 141 tests passing across 20 test files, 0 failures.
 
 ## Environment Variables
 
@@ -125,6 +128,11 @@ npm run db:studio     # Drizzle Studio for interactive DB inspection
 
 **Optional — Secrets:**
 - `SECRETS_PROVIDER` (only `env` is built in; any other value fails startup with a pointer to the `SecretsProvider` interface)
+
+**Optional — MCP:**
+- `MCP_TOOL_TAGS` — comma-separated spec tags to expose as MCP tools (default: all except audit/secrets/monitoring/agents/mcp)
+- `MCP_API_BASE_URL` — base URL the MCP dispatcher calls back into (default: this server)
+- `OPENAPI_SPEC_PATH` — spec file the tool catalog is generated from
 
 **Optional — Alert Delivery:**
 - `SLACK_WEBHOOK_URL` — Slack incoming webhook

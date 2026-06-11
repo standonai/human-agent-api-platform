@@ -227,8 +227,10 @@ export function sanitizeInput(req: Request, res: Response, next: NextFunction): 
  * Detects and blocks common injection attacks
  */
 export function detectInjectionAttacks(req: Request, res: Response, next: NextFunction): void {
-  // Exempt endpoints that legitimately accept arbitrary structured data (e.g. OpenAPI specs)
-  if (req.path.startsWith('/api/convert')) {
+  // Exempt endpoints that legitimately accept arbitrary structured data
+  // (OpenAPI specs, MCP JSON-RPC). MCP tool calls are re-checked when they
+  // are dispatched to the real endpoint through the loopback executor.
+  if (req.path.startsWith('/api/convert') || req.path === '/mcp') {
     next();
     return;
   }

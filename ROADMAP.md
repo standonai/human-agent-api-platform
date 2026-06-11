@@ -60,23 +60,29 @@ Convert the asset from "a monolith" into "things people can install."
       `@standonai` scope) — deferred until first publish; scope name is
       rename-safe until then.
 
-## Phase 2 — MCP-native surface
+## Phase 2 — MCP-native surface *(complete)*
 
 Any API built on this platform automatically *is* an MCP server.
 
-- Evolve `src/tools/openapi-parser.ts` + converters into an OpenAPI → MCP
-  tool generator. OpenAPI metadata maps to MCP tool annotations
-  (`GET` → `readOnlyHint`, `DELETE` → `destructiveHint`).
-- Mount an MCP server at `/mcp` (`@modelcontextprotocol/sdk`, streamable
-  HTTP transport), dispatching tool calls into existing routes in-process.
-- Map dry-run: destructive MCP tools are previewable with `dry_run=true`.
-- Discovery: `/.well-known/` metadata and a generated `llms.txt` derived
-  from the OpenAPI spec.
-- The OpenAI/Anthropic tool-format converter becomes a secondary output of
-  the same generator.
-
-**Done when:** the reference app can be added to an MCP client (e.g. Claude
-Code) and complete a task-CRUD round trip with zero custom client code.
+- [x] OpenAPI → MCP tool generator (`src/tools/mcp-converter.ts` +
+      `src/mcp/tool-catalog.ts`). OpenAPI metadata maps to MCP annotations
+      (`GET` → `readOnlyHint`, `DELETE` → `destructiveHint` +
+      `idempotentHint`). Admin tags (audit/secrets/monitoring/agents) are
+      excluded by default; override with `MCP_TOOL_TAGS`.
+- [x] MCP server at `/mcp` (`@modelcontextprotocol/sdk`, streamable HTTP,
+      stateless). Tool calls dispatch as real HTTP requests through the
+      full middleware stack (loopback executor) so REST and MCP semantics
+      are identical — auth headers are forwarded, errors keep their
+      `suggestion` field.
+- [x] Every mutation tool gains a `dry_run` input mapping to
+      `?dry_run=true`; destructive tools are previewable.
+- [x] Discovery: `/.well-known/mcp.json` + `/llms.txt`, both generated
+      from the spec at runtime so they cannot drift.
+- [x] Verified live: task create → list → delete round trip over JSON-RPC
+      with a real JWT, including dry-run preview and suggestion-bearing
+      error results.
+- The OpenAI/Anthropic converters remain as secondary outputs of the same
+  parser (`/api/convert`).
 
 ## Phase 3 — Delegation: agents acting on behalf of users
 

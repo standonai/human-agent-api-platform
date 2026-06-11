@@ -61,6 +61,7 @@ export interface GenericToolDefinition {
   description: string;
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
+  tags?: string[];
   parameters: {
     path?: Record<string, ParameterDefinition>;
     query?: Record<string, ParameterDefinition>;

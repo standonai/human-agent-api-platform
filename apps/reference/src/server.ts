@@ -30,6 +30,9 @@ import {
 import converterRoutes from './api/converter-routes.js';
 import tasksRoutes from './api/tasks-routes.js';
 import authRoutes from './api/auth-routes.js';
+import { createMcpRouter } from './mcp/mcp-router.js';
+import { createDiscoveryRouter } from './mcp/discovery.js';
+import { createLoopbackExecutor } from './mcp/executor.js';
 import { initializeDatabase, checkpointDatabase } from './db/database.js';
 import { initializeDefaultUsers } from './auth/user-store.js';
 import {
@@ -39,6 +42,7 @@ import {
 
 const app = express();
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const PORT = process.env.PORT || 3000;
 const rawAppProfile = (process.env.APP_PROFILE || 'core').toLowerCase();
 const appProfile = rawAppProfile === 'full' ? 'full' : 'core';
 const fullProfileEnabled = appProfile === 'full';
@@ -179,6 +183,13 @@ app.use(express.static(join(__dirname, '../public')));
 app.use('/api/auth', authRoutes);          // Authentication routes (public)
 app.use('/api', converterRoutes);          // OpenAPI converter
 app.use('/api/v2/tasks', tasksRoutes);     // Tasks API
+
+// MCP surface: tools generated from the OpenAPI spec, dispatched back
+// through this server's own HTTP stack so REST and MCP stay identical.
+app.use('/mcp', createMcpRouter({
+  executor: createLoopbackExecutor(process.env.MCP_API_BASE_URL || `http://127.0.0.1:${PORT}`),
+}));
+app.use(createDiscoveryRouter());          // /.well-known/mcp.json + /llms.txt
 app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'healthy',
@@ -204,9 +215,6 @@ app.use(
     includeStackTrace: process.env.NODE_ENV !== 'production',
   })
 );
-
-// Start server
-const PORT = process.env.PORT || 3000;
 
 interface StartupValidationIssue {
   key: string;
@@ -538,6 +546,9 @@ Core API Surface:
   GET    /api/v2/tasks       - List tasks
   POST   /api/v2/tasks       - Create task (supports ?dry_run=true)
   POST   /api/convert        - Convert OpenAPI to tool definitions
+  POST   /mcp                - MCP server (streamable HTTP, spec-generated tools)
+  GET    /.well-known/mcp.json - MCP discovery metadata
+  GET    /llms.txt           - Agent-readable API overview
       `);
       return;
     }

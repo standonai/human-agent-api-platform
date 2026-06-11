@@ -15,6 +15,8 @@ A TypeScript/Express API platform for human and agent clients, with OpenAPI spec
   - [`@standonai/agent-dry-run`](./packages/agent-dry-run) — `?dry_run=true` validation-without-execution for mutations
   - [`@standonai/agent-metrics`](./packages/agent-metrics) — agent detection + zero-shot success rate tracking
 - A reference platform ([`apps/reference`](./apps/reference)) built on those packages:
+  - **MCP server at `/mcp`** — tools generated from the OpenAPI spec (streamable HTTP); add it to any MCP client and use the API with zero custom code
+  - Agent discovery: `/.well-known/mcp.json` + spec-derived `/llms.txt`
   - JWT auth for users and API-key auth for agents
   - OpenAPI-first API definitions and linting
   - Rate limiting, security headers, and startup validation checks
@@ -85,6 +87,17 @@ curl -X POST http://localhost:3000/api/auth/login \
 curl -X POST http://localhost:3000/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"<paste-refresh-token>"}'
+
+# MCP: list spec-generated tools (JSON-RPC over streamable HTTP)
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer <paste-access-token>" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# agent discovery
+curl http://localhost:3000/.well-known/mcp.json
+curl http://localhost:3000/llms.txt
 ```
 
 ## Pre-Deployment Checks

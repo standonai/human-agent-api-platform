@@ -166,6 +166,7 @@ function extractToolFromOperation(
     description,
     method: method.toUpperCase() as any,
     path,
+    tags: operation.tags,
     parameters,
     responses,
   };
@@ -215,13 +216,17 @@ function convertSchema(schema: Schema, spec: OpenAPISpec): ParameterDefinition {
   if (schema.maximum !== undefined) def.maximum = schema.maximum;
 
   if (schema.properties) {
+    // OpenAPI lists required property NAMES on the parent object schema;
+    // propagate that onto each property so converters see it.
+    const requiredNames = Array.isArray(schema.required) ? schema.required : [];
     def.properties = {};
     for (const [propName, propSchema] of Object.entries(schema.properties)) {
       def.properties[propName] = convertSchema(propSchema, spec);
+      if (requiredNames.includes(propName)) {
+        def.properties[propName].required = true;
+      }
     }
-  }
-
-  if (schema.required) {
+  } else if (schema.required) {
     def.required = true;
   }
 
