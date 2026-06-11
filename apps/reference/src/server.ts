@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 import {
   requestIdMiddleware,
   versioningMiddleware,
-  agentTrackingMiddleware,
+  createAgentTrackingMiddleware,
   errorHandler,
   dryRunMiddleware,
   VersionConfig,
@@ -30,6 +30,8 @@ import {
 import converterRoutes from './api/converter-routes.js';
 import tasksRoutes from './api/tasks-routes.js';
 import authRoutes from './api/auth-routes.js';
+import oauthRoutes from './api/oauth-routes.js';
+import delegationsRoutes from './api/delegations-routes.js';
 import { createMcpRouter } from './mcp/mcp-router.js';
 import { createDiscoveryRouter } from './mcp/discovery.js';
 import { createLoopbackExecutor } from './mcp/executor.js';
@@ -156,7 +158,7 @@ const versionConfig: VersionConfig = {
 };
 
 app.use(versioningMiddleware(versionConfig));
-app.use(agentTrackingMiddleware);
+app.use(createAgentTrackingMiddleware({ trackSelfReported: false })); // metric binds to authenticated identity
 if (fullProfileEnabled) {
   app.use(lazyMiddleware(async () => {
     const { metricsMiddleware } = await import('./observability/index.js');
@@ -181,6 +183,8 @@ app.use(express.static(join(__dirname, '../public')));
 
 // Mount API routes
 app.use('/api/auth', authRoutes);          // Authentication routes (public)
+app.use('/oauth', express.urlencoded({ extended: false }), oauthRoutes); // OAuth 2.1 token endpoint
+app.use('/api/delegations', delegationsRoutes); // Delegation grants (consent surface)
 app.use('/api', converterRoutes);          // OpenAPI converter
 app.use('/api/v2/tasks', tasksRoutes);     // Tasks API
 
@@ -546,6 +550,8 @@ Core API Surface:
   GET    /api/v2/tasks       - List tasks
   POST   /api/v2/tasks       - Create task (supports ?dry_run=true)
   POST   /api/convert        - Convert OpenAPI to tool definitions
+  POST   /oauth/token        - OAuth 2.1 tokens (client_credentials, token-exchange)
+  POST   /api/delegations    - Grant an agent delegated authority
   POST   /mcp                - MCP server (streamable HTTP, spec-generated tools)
   GET    /.well-known/mcp.json - MCP discovery metadata
   GET    /llms.txt           - Agent-readable API overview

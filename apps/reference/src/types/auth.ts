@@ -92,6 +92,41 @@ export interface RefreshTokenRequest {
 }
 
 /**
+ * OAuth-style token payloads (Phase 3 delegation)
+ *
+ * Session tokens (login/refresh) have no `token_use`. Agent tokens are an
+ * agent acting as itself; delegated tokens are an agent acting on behalf
+ * of a user under a delegation grant (RFC 8693 `act` actor claim).
+ */
+export interface AgentTokenPayload {
+  token_use: 'agent';
+  sub: string; // agent id
+  iat: number;
+  exp: number;
+}
+
+export interface DelegatedTokenPayload {
+  token_use: 'delegated';
+  sub: string;                 // the delegating user — ownership flows from here
+  act: { sub: string };        // the agent actually calling
+  scope: string;               // space-delimited
+  grant_id: string;
+  iat: number;
+  exp: number;
+}
+
+/**
+ * Delegation context attached to a request authenticated with a
+ * delegated token.
+ */
+export interface DelegationContext {
+  grantId: string;
+  userId: string;   // delegating user
+  agentId: string;  // acting agent
+  scopes: string[];
+}
+
+/**
  * Resource ownership tracking (OWASP API1 protection)
  */
 export interface ResourceOwnership {
@@ -115,6 +150,10 @@ declare global {
         id: string;
         name?: string;
       };
+      /** Set when authenticated with a delegated token (agent for user). */
+      delegation?: DelegationContext;
+      /** How this request authenticated: session (default), agent, delegated. */
+      tokenUse?: 'session' | 'agent' | 'delegated';
     }
   }
 }

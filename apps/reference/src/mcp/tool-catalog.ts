@@ -34,7 +34,7 @@ function defaultSpecPath(): string {
  * still available over REST with proper credentials; they are not useful
  * as agent tools and would bloat every client's context window.
  */
-const DEFAULT_EXCLUDED_TAGS = new Set(['audit', 'secrets', 'monitoring', 'agents', 'mcp']);
+const DEFAULT_EXCLUDED_TAGS = new Set(['audit', 'secrets', 'monitoring', 'agents', 'mcp', 'oauth']);
 
 function tagFilter(): (tool: GenericToolDefinition) => boolean {
   const include = process.env.MCP_TOOL_TAGS?.split(',').map((t) => t.trim()).filter(Boolean);

@@ -21,6 +21,7 @@ import {
   verifyRefreshToken,
 } from '../auth/jwt-utils.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireScope } from '../middleware/scopes.js';
 import {
   isRefreshTokenSessionActive,
   revokeRefreshTokenSession,
@@ -414,7 +415,7 @@ router.post('/refresh', async (req: Request, res: Response, next) => {
  * GET /api/auth/me
  * Get current user info
  */
-router.get('/me', requireAuth, (req: Request, res: Response) => {
+router.get('/me', requireAuth, requireScope('profile:read'), (req: Request, res: Response) => {
   const user = findUserById(req.user!.id);
 
   if (!user) {

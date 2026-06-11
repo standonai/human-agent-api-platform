@@ -53,6 +53,10 @@ tags:
     description: OpenAPI to tool definition conversion
   - name: mcp
     description: Model Context Protocol server and agent discovery
+  - name: oauth
+    description: OAuth 2.1 token endpoint (client_credentials + RFC 8693 token exchange)
+  - name: delegations
+    description: Delegation grants — users granting agents scoped, revocable authority
 
 paths:
   # ==========================================================================
@@ -2928,6 +2932,290 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 
+  /.well-known/oauth-protected-resource:
+    get:
+      operationId: getOauthProtectedResourceMetadata
+      summary: OAuth protected resource metadata
+      tags:
+        - oauth
+      description: Tells OAuth-capable clients (e.g. MCP) where the authorization server lives and which scopes exist.
+      responses:
+        '200':
+          description: Protected resource metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                description: RFC 9728-style protected resource metadata
+              example:
+                resource: https://api.example.com
+                authorization_servers: ["https://api.example.com"]
+                scopes_supported: ["tasks:read", "tasks:write", "profile:read"]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /.well-known/oauth-authorization-server:
+    get:
+      operationId: getOauthAuthorizationServerMetadata
+      summary: OAuth authorization server metadata
+      tags:
+        - oauth
+      description: Minimal RFC 8414 metadata — token endpoint and supported grant types.
+      responses:
+        '200':
+          description: Authorization server metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                description: RFC 8414 authorization server metadata
+              example:
+                issuer: https://api.example.com
+                token_endpoint: https://api.example.com/oauth/token
+                grant_types_supported:
+                  - client_credentials
+                  - urn:ietf:params:oauth:grant-type:token-exchange
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # OAuth token endpoint
+  # ==========================================================================
+  /oauth/token:
+    post:
+      operationId: issueOauthToken
+      summary: Issue agent or delegated access tokens
+      tags:
+        - oauth
+      description: |
+        OAuth 2.1-shaped token endpoint (JSON or form-encoded body).
+        grant_type=client_credentials exchanges agent credentials
+        (client_id=agent id, client_secret=agent API key) for a short-lived
+        agent token. grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+        (RFC 8693) exchanges an agent token plus a delegation grant for a
+        delegated token whose `act` claim records the acting agent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: OAuth token request
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  description: client_credentials or urn:ietf:params:oauth:grant-type:token-exchange
+                  enum:
+                    - client_credentials
+                    - urn:ietf:params:oauth:grant-type:token-exchange
+                client_id:
+                  type: string
+                  description: Agent id (client_credentials)
+                client_secret:
+                  type: string
+                  description: Agent API key (client_credentials)
+                subject_token:
+                  type: string
+                  description: Agent token being exchanged (token-exchange)
+                grant_id:
+                  type: string
+                  description: Delegation grant to act under (token-exchange)
+                scope:
+                  type: string
+                  description: Space-delimited scopes; must be within the grant (token-exchange)
+            example:
+              grant_type: client_credentials
+              client_id: agent_1
+              client_secret: agnt_abc123
+      responses:
+        '200':
+          description: Standard OAuth token response
+          content:
+            application/json:
+              schema:
+                type: object
+                description: OAuth access token response
+                properties:
+                  access_token:
+                    type: string
+                    description: Bearer JWT
+                  token_type:
+                    type: string
+                    description: Always Bearer
+                  expires_in:
+                    type: integer
+                    description: Lifetime in seconds
+                  scope:
+                    type: string
+                    description: Granted scopes (delegated tokens)
+              example:
+                access_token: eyJhbGciOi...
+                token_type: Bearer
+                expires_in: 900
+                scope: tasks:read tasks:write
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  # ==========================================================================
+  # Delegation grants
+  # ==========================================================================
+  /api/delegations:
+    post:
+      operationId: createDelegation
+      summary: Grant an agent scoped, time-boxed authority
+      tags:
+        - delegations
+      security:
+        - bearerAuth: []
+      description: |
+        Creates a delegation grant: the authenticated user consents to the
+        named agent acting on their behalf within the given scopes until the
+        grant expires or is revoked. Requires a human session token —
+        agents cannot mint their own authority.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Delegation grant request
+              required: [agent_id, scopes]
+              properties:
+                agent_id:
+                  type: string
+                  description: The agent being granted authority
+                scopes:
+                  type: array
+                  description: Scopes granted (tasks:read, tasks:write, profile:read)
+                  items:
+                    type: string
+                expires_in:
+                  type: integer
+                  description: Lifetime in seconds (default 86400, capped by DELEGATION_MAX_TTL_SECONDS)
+            example:
+              agent_id: agent_1
+              scopes: ["tasks:read", "tasks:write"]
+              expires_in: 3600
+      responses:
+        '201':
+          description: Grant created
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Created delegation grant
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DelegationGrant'
+              example:
+                data:
+                  id: grant_1
+                  agent_id: agent_1
+                  user_id: user_42
+                  scopes: ["tasks:read", "tasks:write"]
+                  active: true
+                  expires_at: '2026-06-13T00:00:00.000Z'
+                  created_at: '2026-06-12T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+    get:
+      operationId: listDelegations
+      summary: List delegation grants
+      tags:
+        - delegations
+      security:
+        - bearerAuth: []
+      description: Lists the authenticated user's delegation grants (admins see all grants).
+      responses:
+        '200':
+          description: Grants for the caller
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Delegation grant list
+                properties:
+                  data:
+                    type: object
+                    description: Wrapper object
+                    properties:
+                      delegations:
+                        type: array
+                        description: The grants
+                        items:
+                          $ref: '#/components/schemas/DelegationGrant'
+              example:
+                data:
+                  delegations: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/delegations/{id}:
+    delete:
+      operationId: revokeDelegation
+      summary: Revoke a delegation grant (immediate)
+      tags:
+        - delegations
+      security:
+        - bearerAuth: []
+      description: Revokes the grant. Outstanding delegated tokens are rejected on their next request.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Grant id to revoke
+          example: grant_1
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Grant revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Revocation result
+                properties:
+                  data:
+                    type: object
+                    description: Revocation confirmation
+                    properties:
+                      id:
+                        type: string
+                        description: The revoked grant id
+                      revoked:
+                        type: boolean
+                        description: Always true on success
+              example:
+                data:
+                  id: grant_1
+                  revoked: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
 # ==============================================================================
 # Components
 # ==============================================================================
@@ -3015,6 +3303,52 @@ components:
         example: 42
 
   schemas:
+    # Delegation schemas
+    DelegationGrant:
+      type: object
+      description: A user's consent for an agent to act on their behalf
+      properties:
+        id:
+          type: string
+          description: Grant id
+          example: grant_1
+        agent_id:
+          type: string
+          description: The empowered agent
+          example: agent_1
+        user_id:
+          type: string
+          description: The delegating user
+          example: user_42
+        scopes:
+          type: array
+          description: Granted scopes
+          items:
+            type: string
+          example: ["tasks:read", "tasks:write"]
+        active:
+          type: boolean
+          description: True when neither revoked nor expired
+          example: true
+        expires_at:
+          type: string
+          format: date-time
+          description: Hard expiry
+        revoked_at:
+          type: string
+          format: date-time
+          description: Set when revoked
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          description: Creation time
+        last_used_at:
+          type: string
+          format: date-time
+          description: Last delegated request under this grant
+          nullable: true
+
     # Auth schemas
     RegisterRequest:
       type: object

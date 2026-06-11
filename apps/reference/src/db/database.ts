@@ -57,16 +57,28 @@ export const refreshTokensTable = sqliteTable('refresh_tokens', {
   replacedByJti: text('replaced_by_jti'),
 });
 
+export const delegationGrantsTable = sqliteTable('delegation_grants', {
+  id:         text('id').primaryKey(),
+  userId:     text('user_id').notNull(),
+  agentId:    text('agent_id').notNull(),
+  scopes:     text('scopes').notNull(), // JSON array of scope strings
+  expiresAt:  integer('expires_at', { mode: 'timestamp' }).notNull(),
+  revokedAt:  integer('revoked_at', { mode: 'timestamp' }),
+  createdAt:  integer('created_at', { mode: 'timestamp' }).notNull(),
+  lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
+});
+
 export type DbUser  = typeof usersTable.$inferSelect;
 export type DbAgent = typeof agentsTable.$inferSelect;
 export type DbTask  = typeof tasksTable.$inferSelect;
 export type DbRefreshToken = typeof refreshTokensTable.$inferSelect;
+export type DbDelegationGrant = typeof delegationGrantsTable.$inferSelect;
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
 let _db: BetterSQLite3Database | null = null;
 let _sqlite: ReturnType<typeof Database> | null = null;
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 const DEFAULT_DATABASE_PATH = './data/platform.db';
 
 interface DbMigration {
@@ -137,6 +149,30 @@ const migrations: DbMigration[] = [
 
         CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at
           ON refresh_tokens (expires_at);
+      `);
+    },
+  },
+  {
+    version: 3,
+    description: 'Delegation grants (agent acting on behalf of user)',
+    up: (sqlite) => {
+      sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS delegation_grants (
+          id           TEXT PRIMARY KEY,
+          user_id      TEXT NOT NULL,
+          agent_id     TEXT NOT NULL,
+          scopes       TEXT NOT NULL,
+          expires_at   INTEGER NOT NULL,
+          revoked_at   INTEGER,
+          created_at   INTEGER NOT NULL,
+          last_used_at INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_delegation_grants_user_id
+          ON delegation_grants (user_id);
+
+        CREATE INDEX IF NOT EXISTS idx_delegation_grants_agent_id
+          ON delegation_grants (agent_id);
       `);
     },
   },
