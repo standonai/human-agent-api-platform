@@ -80,14 +80,17 @@ Any API built on this platform automatically *is* an MCP server.
       from the spec at runtime so they cannot drift.
 - [x] Verified live: task create → list → delete round trip over JSON-RPC
       with a real JWT, including dry-run preview and suggestion-bearing
-      error results.
+      error results — and end-to-end with the official MCP SDK client
+      (`Client` + `StreamableHTTPClientTransport`), zero custom code.
 - The OpenAI/Anthropic converters remain as secondary outputs of the same
   parser (`/api/convert`).
 
 ## Phase 3 — Delegation: agents acting on behalf of users
 
-The feature that makes "human-agent" true. Longest pole — start its design
-doc during Phase 2.
+The feature that makes "human-agent" true. Longest pole.
+**Design doc: [docs/design/phase-3-delegation.md](docs/design/phase-3-delegation.md)** —
+grant model, token format (RFC 8693 `act` claim), scope taxonomy, live
+revocation, MCP metadata, and five implementation slices.
 
 - Replace `X-Agent-ID`/`X-Agent-Key` with OAuth 2.1: client credentials for
   agents acting as themselves; token exchange (RFC 8693, on-behalf-of) for
