@@ -42,6 +42,10 @@ modules that were extracted remain as one-line re-export shims (e.g.
 | `apps/reference/src/db/task-store.ts` | DB-backed task CRUD (synchronous, better-sqlite3) |
 | `apps/reference/src/auth/user-store.ts` | User CRUD + password hashing + bootstrap seeding |
 | `apps/reference/src/auth/agent-store.ts` | Agent CRUD + API key management |
+| `apps/reference/src/auth/delegation-store.ts` | Delegation grants CRUD + scope constants (`VALID_SCOPES`) |
+| `apps/reference/src/api/oauth-routes.ts` | `/oauth/token`: client_credentials + RFC 8693 token exchange |
+| `apps/reference/src/api/delegations-routes.ts` | Grant create/list/revoke (session tokens only) |
+| `apps/reference/src/middleware/auth.ts` | Bearer auth for session/agent/delegated tokens; live grant check; `WWW-Authenticate` |
 | `apps/reference/src/middleware/ownership.ts` | Simple ownership check: `requireOwnerOrAdmin(type, loader)` |
 | `apps/reference/src/middleware/authorization.ts` | RBAC: `requireRole`, `requireAdmin`, `requireAdminOrDeveloper` |
 | `apps/reference/src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
@@ -58,7 +62,8 @@ modules that were extracted remain as one-line re-export shims (e.g.
 - **Monorepo**: npm workspaces; three publishable packages (`@standonai/agent-errors`, `@standonai/agent-dry-run`, `@standonai/agent-metrics`) + the private reference app. Package `prepare` scripts build `dist/` on install; vitest aliases resolve packages to source.
 - **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db` relative to `apps/reference`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
 - **Rate limiting**: Redis sliding window (100 human / 500 agent req/min), in-memory fallback.
-- **Auth**: JWT (1h access, 7d refresh) + agent API keys (SHA-256 hashed).
+- **Auth**: JWT sessions (1h access, 7d refresh) + OAuth 2.1 token endpoint at `/oauth/token` — `client_credentials` (agent API keys, SHA-256 hashed) and RFC 8693 token exchange for **delegated tokens** (agent acting on behalf of a user). Delegated tokens are validated against the live `delegation_grants` row on every request (revocation is immediate); role never delegates (pinned to viewer). Direct `X-Agent-*` header auth on data routes is deprecated (`Deprecation` header).
+- **Scopes**: `tasks:read` / `tasks:write` / `profile:read`, enforced for delegated tokens only (`src/middleware/scopes.ts`).
 - **Secrets**: Environment-variable provider built in; external managers (Vault/AWS/Azure) by implementing the `SecretsProvider` interface in `src/secrets/secrets-manager.ts`.
 - **TLS**: Handled by the reverse proxy (nginx/caddy), not in-app.
 - **Authorization**: Simple ownership check in `src/middleware/ownership.ts` replaces OWASP policy engine.
@@ -113,7 +118,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 141 tests passing across 20 test files, 0 failures.
+**Test coverage**: 159 tests passing across 21 test files, 0 failures.
 
 ## Environment Variables
 
@@ -128,6 +133,9 @@ npm run db:studio     # Drizzle Studio for interactive DB inspection
 
 **Optional — Secrets:**
 - `SECRETS_PROVIDER` (only `env` is built in; any other value fails startup with a pointer to the `SecretsProvider` interface)
+
+**Optional — Delegation:**
+- `DELEGATION_DEFAULT_TTL_SECONDS` (86400), `DELEGATION_MAX_TTL_SECONDS` (604800), `DELEGATED_TOKEN_TTL_SECONDS` (900)
 
 **Optional — MCP:**
 - `MCP_TOOL_TAGS` — comma-separated spec tags to expose as MCP tools (default: all except audit/secrets/monitoring/agents/mcp)

@@ -37,6 +37,34 @@ export function createDiscoveryRouter(catalogProvider: () => ToolCatalog = getTo
     res.type('text/plain').send(renderLlmsTxt(catalog, baseUrl(req)));
   });
 
+  // OAuth metadata (MCP authorization spec): where the token endpoint
+  // lives and how this resource expects to be called.
+  router.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) => {
+    const base = baseUrl(req);
+    res.json({
+      resource: base,
+      authorization_servers: [base],
+      bearer_methods_supported: ['header'],
+      scopes_supported: ['tasks:read', 'tasks:write', 'profile:read'],
+      resource_documentation: `${base}/llms.txt`,
+    });
+  });
+
+  router.get('/.well-known/oauth-authorization-server', (req: Request, res: Response) => {
+    const base = baseUrl(req);
+    res.json({
+      issuer: base,
+      token_endpoint: `${base}/oauth/token`,
+      grant_types_supported: [
+        'client_credentials',
+        'urn:ietf:params:oauth:grant-type:token-exchange',
+      ],
+      token_endpoint_auth_methods_supported: ['client_secret_post'],
+      scopes_supported: ['tasks:read', 'tasks:write', 'profile:read'],
+      response_types_supported: [],
+    });
+  });
+
   return router;
 }
 
@@ -56,7 +84,12 @@ export function renderLlmsTxt(catalog: ToolCatalog, base: string): string {
   lines.push(`- MCP endpoint (streamable HTTP): ${base}/mcp`);
   lines.push(`- MCP metadata: ${base}/.well-known/mcp.json`);
   lines.push(`- OpenAPI spec: ${base}/api (see repository specs/openapi/platform-api.yaml)`);
-  lines.push('- Auth: "Authorization: Bearer <JWT>" (users) or "X-Agent-ID" + "X-Agent-Key" (agents)');
+  lines.push('- Auth: "Authorization: Bearer <JWT>" (users). Agents: exchange X-Agent credentials');
+  lines.push(`  for a token at ${base}/oauth/token (grant_type=client_credentials).`);
+  lines.push('- Acting for a user: the user creates a delegation grant (POST /api/delegations),');
+  lines.push('  then exchange your agent token for a delegated token');
+  lines.push('  (grant_type=urn:ietf:params:oauth:grant-type:token-exchange).');
+  lines.push(`- OAuth metadata: ${base}/.well-known/oauth-authorization-server`);
   lines.push('- Errors always include a `suggestion` field — follow it to self-correct.');
   lines.push('- Mutations accept `dry_run=true` to validate without executing.');
   lines.push('');

@@ -5,6 +5,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+import { trackAgentCall } from '@standonai/agent-metrics';
 import { verifyApiKey, updateAgentActivity } from '../auth/agent-store.js';
 import { ErrorCode } from '../types/errors.js';
 import { withDocUrl } from '../utils/docs-url.js';
@@ -98,23 +99,37 @@ export function requireAgentAuth(req: Request, res: Response, next: NextFunction
   // Update agent activity
   updateAgentActivity(agent.id);
 
-  // Attach agent to request
-  req.agent = {
-    id: agent.id,
-    name: agent.name,
-  };
-
-  // Also set for rate limiter
-  if (!req.agentContext) {
-    (req as any).agentContext = {
-      identification: {
-        agentId: agent.id,
-        agentType: 'authenticated',
-      },
-    };
-  }
+  applyHeaderAuthenticatedAgent(req, res, agent.id, agent.name);
 
   next();
+}
+
+/**
+ * Direct header auth on data routes is deprecated (Phase 3 decision):
+ * exchange the same credentials for a token at POST /oauth/token instead.
+ * Headers keep working for one release; we signal via the Deprecation
+ * header and bind metrics to the verified identity.
+ */
+function applyHeaderAuthenticatedAgent(
+  req: Request,
+  res: Response,
+  agentId: string,
+  agentName?: string
+): void {
+  req.agent = { id: agentId, name: agentName };
+  req.tokenUse = 'agent';
+
+  (req as any).agentContext = {
+    ...(req as any).agentContext,
+    identification: { agentId, agentType: 'authenticated' },
+  };
+  trackAgentCall(agentId, req.path);
+
+  res.setHeader('Deprecation', 'true');
+  res.setHeader(
+    'Link',
+    '</.well-known/oauth-authorization-server>; rel="deprecation"; type="application/json"'
+  );
 }
 
 /**
@@ -123,7 +138,7 @@ export function requireAgentAuth(req: Request, res: Response, next: NextFunction
  * Doesn't block if no agent credentials provided,
  * but verifies them if present
  */
-export function optionalAgentAuth(req: Request, _res: Response, next: NextFunction): void {
+export function optionalAgentAuth(req: Request, res: Response, next: NextFunction): void {
   const agentId = req.headers['x-agent-id'] as string;
   const apiKey = req.headers['x-agent-key'] as string;
 
@@ -138,20 +153,7 @@ export function optionalAgentAuth(req: Request, _res: Response, next: NextFuncti
   if (agent && agent.active && agent.id === agentId) {
     // Valid agent credentials
     updateAgentActivity(agent.id);
-
-    req.agent = {
-      id: agent.id,
-      name: agent.name,
-    };
-
-    if (!req.agentContext) {
-      (req as any).agentContext = {
-        identification: {
-          agentId: agent.id,
-          agentType: 'authenticated',
-        },
-      };
-    }
+    applyHeaderAuthenticatedAgent(req, res, agent.id, agent.name);
   }
 
   // Continue regardless of whether agent auth succeeded

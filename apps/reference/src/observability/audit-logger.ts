@@ -31,6 +31,14 @@ export interface AuditLogEntry {
   agentId?: string;
   agentName?: string;
 
+  // Delegation: agent acting on behalf of a user ("agent A for user B")
+  delegation?: {
+    grantId: string;
+    userId: string;
+    agentId: string;
+    scopes: string[];
+  };
+
   // Request details
   ip: string;
   method: string;
@@ -221,6 +229,7 @@ export function extractAuditInfo(req: Request): Partial<AuditLogEntry> {
     userRole: (req as any).user?.role,
     agentId: (req as any).agent?.id,
     agentName: (req as any).agent?.name,
+    delegation: (req as any).delegation,
     ip: req.ip || req.socket.remoteAddress || 'unknown',
     method: req.method,
     path: req.path,

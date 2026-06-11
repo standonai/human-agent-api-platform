@@ -6,7 +6,14 @@
 
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
-import { JWTPayload, RefreshTokenPayload, TokenPair, User } from '../types/auth.js';
+import {
+  AgentTokenPayload,
+  DelegatedTokenPayload,
+  JWTPayload,
+  RefreshTokenPayload,
+  TokenPair,
+  User,
+} from '../types/auth.js';
 
 /**
  * Get JWT secret from environment
@@ -104,6 +111,88 @@ export function generateTokenPairWithMetadata(user: User): {
     refreshTokenId,
     refreshTokenExpiresAt: new Date(Date.now() + refreshExpiresIn * 1000),
   };
+}
+
+/**
+ * OAuth token TTL (agent + delegated tokens). Short by design: live grant
+ * checks are the revocation mechanism, the TTL is defense in depth.
+ */
+export function oauthTokenTtlSeconds(): number {
+  const raw = parseInt(process.env.DELEGATED_TOKEN_TTL_SECONDS || '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : 900; // 15 min
+}
+
+/**
+ * Generate an agent token (OAuth client_credentials): agent acting as itself.
+ */
+export function generateAgentToken(agentId: string): string {
+  const payload: Omit<AgentTokenPayload, 'iat' | 'exp'> = {
+    token_use: 'agent',
+    sub: agentId,
+  };
+  return jwt.sign(payload as object, getJWTSecret(), {
+    expiresIn: oauthTokenTtlSeconds(),
+  });
+}
+
+/**
+ * Generate a delegated token (RFC 8693 token exchange): agent acting on
+ * behalf of a user under a delegation grant.
+ */
+export function generateDelegatedToken(params: {
+  userId: string;
+  agentId: string;
+  scopes: string[];
+  grantId: string;
+}): string {
+  const payload: Omit<DelegatedTokenPayload, 'iat' | 'exp'> = {
+    token_use: 'delegated',
+    sub: params.userId,
+    act: { sub: params.agentId },
+    scope: params.scopes.join(' '),
+    grant_id: params.grantId,
+  };
+  return jwt.sign(payload as object, getJWTSecret(), {
+    expiresIn: oauthTokenTtlSeconds(),
+  });
+}
+
+export type AnyAccessTokenPayload =
+  | (JWTPayload & { token_use?: undefined })
+  | AgentTokenPayload
+  | DelegatedTokenPayload;
+
+/**
+ * Verify any access token (session, agent, or delegated).
+ * Refresh tokens are rejected (they have type: 'refresh').
+ */
+export function verifyAccessToken(token: string): AnyAccessTokenPayload {
+  let payload: Record<string, unknown>;
+  try {
+    payload = jwt.verify(token, getJWTSecret()) as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      throw new Error('TOKEN_EXPIRED');
+    }
+    if (error instanceof jwt.JsonWebTokenError) {
+      throw new Error('INVALID_TOKEN');
+    }
+    throw new Error('TOKEN_VERIFICATION_FAILED');
+  }
+
+  if (payload.type === 'refresh') {
+    throw new Error('INVALID_TOKEN');
+  }
+
+  if (payload.token_use === 'agent' || payload.token_use === 'delegated') {
+    return payload as unknown as AnyAccessTokenPayload;
+  }
+
+  if (typeof payload.userId === 'string') {
+    return payload as unknown as JWTPayload & { token_use?: undefined };
+  }
+
+  throw new Error('INVALID_TOKEN');
 }
 
 /**

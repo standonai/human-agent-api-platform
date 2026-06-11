@@ -5,10 +5,11 @@ import { requireUserOrAgent } from './agent-auth.js';
 import { generateAccessToken } from '../auth/jwt-utils.js';
 import { UserRole } from '../types/auth.js';
 
-function createResponse(): Response & { statusCode?: number; body?: any } {
+function createResponse(): Response & { statusCode?: number; body?: any; headers: Record<string, string> } {
   const res: any = {
     statusCode: 200,
     body: undefined,
+    headers: {},
     status(code: number) {
       this.statusCode = code;
       return this;
@@ -17,8 +18,12 @@ function createResponse(): Response & { statusCode?: number; body?: any } {
       this.body = payload;
       return this;
     },
+    setHeader(name: string, value: string) {
+      this.headers[name.toLowerCase()] = value;
+      return this;
+    },
   };
-  return res as Response & { statusCode?: number; body?: any };
+  return res;
 }
 
 describe('Auth Contract', () => {
@@ -40,6 +45,7 @@ describe('Auth Contract', () => {
     expect(res.body.error.code).toBe('UNAUTHORIZED');
     expect(res.body.error.request_id).toBe('req_missing_auth');
     expect(res.body.error.details[0].suggestion).toContain('Bearer <token>');
+    expect(res.headers['www-authenticate']).toContain('oauth-protected-resource');
     expect(next).not.toHaveBeenCalled();
   });
 

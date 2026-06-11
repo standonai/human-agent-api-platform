@@ -85,31 +85,41 @@ Any API built on this platform automatically *is* an MCP server.
 - The OpenAI/Anthropic converters remain as secondary outputs of the same
   parser (`/api/convert`).
 
-## Phase 3 — Delegation: agents acting on behalf of users
+## Phase 3 — Delegation: agents acting on behalf of users *(complete)*
 
-The feature that makes "human-agent" true. Longest pole.
-**Design doc: [docs/design/phase-3-delegation.md](docs/design/phase-3-delegation.md)** —
-grant model, token format (RFC 8693 `act` claim), scope taxonomy, live
-revocation, MCP metadata, and five implementation slices.
+The feature that makes "human-agent" true.
+Design: [docs/design/phase-3-delegation.md](docs/design/phase-3-delegation.md).
 
-- Replace `X-Agent-ID`/`X-Agent-Key` with OAuth 2.1: client credentials for
-  agents acting as themselves; token exchange (RFC 8693, on-behalf-of) for
-  agents acting for a user.
-- `delegation_grants` table: user → agent, scopes (`tasks:read`,
-  `tasks:write`, …), expiry, revoked-at. Endpoints to grant, list, revoke.
-  Delegated tokens are short-lived.
-- Ownership middleware: a delegated request passes the owner check if the
-  *delegating user* owns the resource and the grant covers the scope.
-- Audit log records both identities on every delegated call
-  ("agent X for user Y").
-- Wire into MCP authorization (the MCP auth spec is OAuth-based — Phases 2
-  and 3 converge here).
-- Migration shim: header-key auth survives behind a deprecation flag for
-  one release.
+- [x] OAuth 2.1 token endpoint `/oauth/token`: `client_credentials` (agent
+      as itself, using existing API keys) + RFC 8693 token exchange for
+      delegated tokens (`sub` = user, `act.sub` = agent, `scope`,
+      `grant_id`; 15-min TTL).
+- [x] `delegation_grants` table + `POST/GET /api/delegations`,
+      `DELETE /api/delegations/{id}` (session tokens only — agents cannot
+      mint their own authority) + dashboard Delegations panel.
+- [x] Delegated requests act as the delegating user for ownership; scopes
+      (`tasks:read`/`tasks:write`/`profile:read`) enforced; **role never
+      delegates** (pinned to viewer).
+- [x] Revocation is live: every request re-checks the grant row; revoked
+      grants kill outstanding tokens immediately (`GRANT_REVOKED` with a
+      suggestion).
+- [x] Audit log records both identities (`delegation: {grantId, userId,
+      agentId, scopes}`); identity extraction fixed to run at response
+      time so route-level auth is captured at all.
+- [x] MCP wiring: `WWW-Authenticate` on 401s,
+      `/.well-known/oauth-protected-resource` +
+      `/.well-known/oauth-authorization-server`; delegated tokens work
+      over `/mcp` unchanged.
+- [x] Zero-shot metric now binds to authenticated agent identity
+      (self-reported `X-Agent-ID` no longer feeds the metric).
+- [x] Migration: direct header auth on data routes still works but returns
+      a `Deprecation` header; removal planned for the release after
+      Phase 3.
 
-**Done when:** a user can grant an agent time-boxed write access to their
-tasks, the agent operates via MCP under that grant, the audit log shows the
-pair, and revocation takes effect immediately.
+**Done when** *(verified in `delegation-flow.test.ts`)*: a user grants an
+agent time-boxed write access to their tasks; the agent operates via MCP
+under that grant; the audit log shows the pair; revocation takes effect
+immediately.
 
 ## Phase 4 — Human-in-the-loop + async work
 

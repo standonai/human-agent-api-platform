@@ -26,12 +26,12 @@ import {
 export function auditLogMiddleware(req: Request, res: Response, next: NextFunction): void {
   const startTime = Date.now();
 
-  // Extract initial audit info
-  const auditInfo = extractAuditInfo(req);
-
-  // Capture response when finished
+  // Capture response when finished. Audit info is extracted *at finish*
+  // so identities set by route-level auth (user/agent/delegation) are
+  // included — extracting at request start would always miss them.
   res.on('finish', () => {
     const duration = Date.now() - startTime;
+    const auditInfo = extractAuditInfo(req);
 
     const entry: AuditLogEntry = {
       timestamp: new Date().toISOString(),
@@ -41,6 +41,7 @@ export function auditLogMiddleware(req: Request, res: Response, next: NextFuncti
       userRole: auditInfo.userRole,
       agentId: auditInfo.agentId,
       agentName: auditInfo.agentName,
+      delegation: auditInfo.delegation,
       ip: auditInfo.ip || 'unknown',
       method: auditInfo.method || 'UNKNOWN',
       path: auditInfo.path || 'unknown',

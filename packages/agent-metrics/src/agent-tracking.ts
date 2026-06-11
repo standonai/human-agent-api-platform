@@ -52,41 +52,60 @@ function parseUserAgent(userAgent: string): AgentIdentification {
   };
 }
 
-/**
- * Middleware that identifies and tracks AI agents
- */
-export function agentTrackingMiddleware(req: Request, res: Response, next: NextFunction): void {
-  // Get agent ID from header if present
-  const agentId = req.headers['x-agent-id'] as string;
-  const userAgent = req.headers['user-agent'] as string || 'unknown';
-
-  // Parse user agent to detect agent type
-  const identification = parseUserAgent(userAgent);
-
-  // Override with explicit agent ID if provided
-  if (agentId) {
-    identification.agentId = agentId;
-  }
-
-  // Create agent context
-  req.agentContext = {
-    identification,
-    requestId: (req as Request & { requestId?: string }).requestId || 'unknown',
-    timestamp: new Date(),
-  };
-
-  // Add agent identification to response headers for debugging
-  if (identification.agentType !== 'human' && identification.agentType) {
-    res.setHeader('X-Detected-Agent-Type', identification.agentType);
-  }
-
-  // Track agent calls for zero-shot success rate metric
-  if (identification.agentType !== 'human' && identification.agentId) {
-    trackAgentCall(identification.agentId, req.path);
-  }
-
-  next();
+export interface AgentTrackingOptions {
+  /**
+   * Feed self-reported identities (X-Agent-ID header) into the zero-shot
+   * metric. Default true for backward compatibility. Set false when the
+   * app tracks *authenticated* agent identities itself (the metric then
+   * only measures verified agents); detection headers still work.
+   */
+  trackSelfReported?: boolean;
 }
+
+/**
+ * Build the agent identification/tracking middleware.
+ */
+export function createAgentTrackingMiddleware(options: AgentTrackingOptions = {}) {
+  const trackSelfReported = options.trackSelfReported !== false;
+
+  return function agentTracking(req: Request, res: Response, next: NextFunction): void {
+    // Get agent ID from header if present
+    const agentId = req.headers['x-agent-id'] as string;
+    const userAgent = req.headers['user-agent'] as string || 'unknown';
+
+    // Parse user agent to detect agent type
+    const identification = parseUserAgent(userAgent);
+
+    // Override with explicit agent ID if provided
+    if (agentId) {
+      identification.agentId = agentId;
+    }
+
+    // Create agent context
+    req.agentContext = {
+      identification,
+      requestId: (req as Request & { requestId?: string }).requestId || 'unknown',
+      timestamp: new Date(),
+    };
+
+    // Add agent identification to response headers for debugging
+    if (identification.agentType !== 'human' && identification.agentType) {
+      res.setHeader('X-Detected-Agent-Type', identification.agentType);
+    }
+
+    // Track agent calls for zero-shot success rate metric
+    if (trackSelfReported && identification.agentType !== 'human' && identification.agentId) {
+      trackAgentCall(identification.agentId, req.path);
+    }
+
+    next();
+  };
+}
+
+/**
+ * Default middleware (tracks self-reported identities; back-compat).
+ */
+export const agentTrackingMiddleware = createAgentTrackingMiddleware();
 
 /**
  * Helper to check if request is from an AI agent

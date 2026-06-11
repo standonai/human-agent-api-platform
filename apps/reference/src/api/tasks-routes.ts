@@ -3,6 +3,7 @@ import { ApiError, ErrorCode } from '../types/errors.js';
 import { optionalAuth } from '../middleware/auth.js';
 import { requireOwnerOrAdmin } from '../middleware/ownership.js';
 import { optionalAgentAuth, requireUserOrAgent } from '../middleware/agent-auth.js';
+import { requireScope } from '../middleware/scopes.js';
 import {
   dbGetTask,
   dbListTasks,
@@ -14,6 +15,8 @@ import {
 
 const router = Router();
 const requireTaskCaller = [optionalAuth, optionalAgentAuth, requireUserOrAgent] as const;
+const requireTaskRead = [...requireTaskCaller, requireScope('tasks:read')] as const;
+const requireTaskWrite = [...requireTaskCaller, requireScope('tasks:write')] as const;
 
 // Stub Map exported for backward-compat with tests that manipulate it directly.
 // Route handlers use the DB; test code operates on this Map.
@@ -25,7 +28,7 @@ const tasks = new Map<string, Task>();
  */
 router.post(
   '/',
-  ...requireTaskCaller,
+  ...requireTaskWrite,
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { title, description, status, assignee } = req.body;
@@ -84,7 +87,7 @@ router.post(
  */
 router.get(
   '/',
-  ...requireTaskCaller,
+  ...requireTaskRead,
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { status, assignee, limit = '50', offset = '0' } = req.query;
@@ -119,7 +122,7 @@ router.get(
  */
 router.get(
   '/:id',
-  ...requireTaskCaller,
+  ...requireTaskRead,
   requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
   (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -137,7 +140,7 @@ router.get(
  */
 router.put(
   '/:id',
-  ...requireTaskCaller,
+  ...requireTaskWrite,
   requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
   (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -178,7 +181,7 @@ router.put(
  */
 router.delete(
   '/:id',
-  ...requireTaskCaller,
+  ...requireTaskWrite,
   requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
   (req: Request, res: Response, next: NextFunction) => {
     try {

@@ -276,9 +276,137 @@
     </table>
   </div>
 
+  <div class="table-container" style="margin-top: 1.5rem;">
+    <div class="chart-title">Delegations — agents acting on your behalf</div>
+
+    <div id="delegationLogin" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.75rem 0;">
+      <input id="delEmail" type="email" placeholder="email" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:0.4rem 0.6rem;border-radius:6px;">
+      <input id="delPassword" type="password" placeholder="password" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:0.4rem 0.6rem;border-radius:6px;">
+      <button onclick="delegationLogin()" style="background:#3b82f6;color:#fff;border:0;padding:0.4rem 0.9rem;border-radius:6px;cursor:pointer;">Login</button>
+      <span id="delLoginStatus" style="color:#94a3b8;align-self:center;"></span>
+    </div>
+
+    <div id="delegationPanel" style="display:none;">
+      <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.75rem 0; align-items:center;">
+        <input id="delAgentId" placeholder="agent_id" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:0.4rem 0.6rem;border-radius:6px;">
+        <label style="color:#e2e8f0;"><input type="checkbox" id="scopeTasksRead" checked> tasks:read</label>
+        <label style="color:#e2e8f0;"><input type="checkbox" id="scopeTasksWrite"> tasks:write</label>
+        <label style="color:#e2e8f0;"><input type="checkbox" id="scopeProfileRead"> profile:read</label>
+        <input id="delTtl" type="number" placeholder="seconds (default 86400)" style="width:180px;background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:0.4rem 0.6rem;border-radius:6px;">
+        <button onclick="createDelegation()" style="background:#22c55e;color:#06281a;border:0;padding:0.4rem 0.9rem;border-radius:6px;cursor:pointer;font-weight:600;">Grant</button>
+        <span id="delStatus" style="color:#94a3b8;"></span>
+      </div>
+      <table id="delegationsTable">
+        <thead>
+          <tr>
+            <th>Grant</th>
+            <th>Agent</th>
+            <th>Scopes</th>
+            <th>Status</th>
+            <th>Expires</th>
+            <th>Last Used</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <script>
     let requestsChart, agentTypeChart;
     let refreshInterval;
+
+    // ── Delegations ───────────────────────────────────────────────
+    let sessionToken = sessionStorage.getItem('platform_jwt') || '';
+    if (sessionToken) { showDelegationPanel(); }
+
+    function showDelegationPanel() {
+      document.getElementById('delegationLogin').style.display = 'none';
+      document.getElementById('delegationPanel').style.display = 'block';
+      loadDelegations();
+    }
+
+    async function delegationLogin() {
+      const status = document.getElementById('delLoginStatus');
+      status.textContent = '...';
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('delEmail').value,
+          password: document.getElementById('delPassword').value,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        status.textContent = body.error?.details?.[0]?.suggestion || body.error?.message || 'login failed';
+        return;
+      }
+      sessionToken = body.data.accessToken;
+      sessionStorage.setItem('platform_jwt', sessionToken);
+      showDelegationPanel();
+    }
+
+    async function loadDelegations() {
+      const res = await fetch('/api/delegations', {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+      if (res.status === 401) {
+        sessionStorage.removeItem('platform_jwt');
+        document.getElementById('delegationLogin').style.display = 'flex';
+        document.getElementById('delegationPanel').style.display = 'none';
+        return;
+      }
+      const body = await res.json();
+      const tbody = document.querySelector('#delegationsTable tbody');
+      tbody.innerHTML = '';
+      for (const g of body.data.delegations) {
+        const tr = document.createElement('tr');
+        const status = g.revoked_at ? 'revoked' : (g.active ? 'active' : 'expired');
+        tr.innerHTML = `
+          <td>${g.id}</td>
+          <td>${g.agent_id}</td>
+          <td>${g.scopes.join(', ')}</td>
+          <td style="color:${status === 'active' ? '#22c55e' : '#94a3b8'}">${status}</td>
+          <td>${new Date(g.expires_at).toLocaleString()}</td>
+          <td>${g.last_used_at ? new Date(g.last_used_at).toLocaleString() : '—'}</td>
+          <td>${status === 'active' ? `<button onclick="revokeDelegation('${g.id}')" style="background:#ef4444;color:#fff;border:0;padding:0.25rem 0.6rem;border-radius:6px;cursor:pointer;">Revoke</button>` : ''}</td>`;
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function createDelegation() {
+      const status = document.getElementById('delStatus');
+      const scopes = [];
+      if (document.getElementById('scopeTasksRead').checked) scopes.push('tasks:read');
+      if (document.getElementById('scopeTasksWrite').checked) scopes.push('tasks:write');
+      if (document.getElementById('scopeProfileRead').checked) scopes.push('profile:read');
+      const ttl = document.getElementById('delTtl').value;
+      const payload = {
+        agent_id: document.getElementById('delAgentId').value,
+        scopes,
+        ...(ttl ? { expires_in: Number(ttl) } : {}),
+      };
+      const res = await fetch('/api/delegations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json();
+      status.textContent = res.ok
+        ? `granted ${body.data.id}`
+        : (body.error?.details?.[0]?.suggestion || body.error?.message || 'failed');
+      loadDelegations();
+    }
+
+    async function revokeDelegation(id) {
+      await fetch(`/api/delegations/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+      loadDelegations();
+    }
 
     // Initialize charts
     function initCharts() {
