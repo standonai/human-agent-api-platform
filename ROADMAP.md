@@ -80,7 +80,8 @@ Any API built on this platform automatically *is* an MCP server.
       from the spec at runtime so they cannot drift.
 - [x] Verified live: task create → list → delete round trip over JSON-RPC
       with a real JWT, including dry-run preview and suggestion-bearing
-      error results.
+      error results — and end-to-end with the official MCP SDK client
+      (`Client` + `StreamableHTTPClientTransport`), zero custom code.
 - The OpenAI/Anthropic converters remain as secondary outputs of the same
   parser (`/api/convert`).
 
