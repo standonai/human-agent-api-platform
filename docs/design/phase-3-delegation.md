@@ -1,6 +1,6 @@
 # Phase 3 Design: Delegated Authority (agent on behalf of user)
 
-Status: **draft for review** · Roadmap: [Phase 3](../../ROADMAP.md)
+Status: **accepted** (decisions below) · Roadmap: [Phase 3](../../ROADMAP.md)
 
 ## Problem
 
@@ -170,12 +170,14 @@ A user grants an agent time-boxed write access to their tasks; the agent
 operates via MCP under that grant; the audit log shows both identities;
 revocation takes effect immediately.
 
-## Open questions for review
+## Decisions (owner review, 2026-06-12)
 
-1. **Scope granularity** — is `tasks:write` (covering delete) acceptable
-   for v1, or should `tasks:delete` be separate from day one?
-2. **Grant creation UX** — API-only for v1, or also a dashboard page in
-   `public/dashboard.html`?
-3. **Should `client_credentials` tokens be required** (deprecating direct
-   header auth on data routes on a timeline), or remain optional
-   indefinitely?
+1. **Scope granularity** — `tasks:write` covers create/update/delete in
+   v1; split `tasks:delete` only if a real need appears.
+2. **Grant creation UX** — ship the dashboard page in v1
+   (`public/dashboard.html` gains a Delegations section) alongside the API.
+3. **Tokens are required** — direct `X-Agent-ID`/`X-Agent-Key` header auth
+   on data routes is deprecated: it keeps working in v1 but responds with a
+   `Deprecation` header + warning log, and is removed for data routes in
+   the release after Phase 3. The headers remain the credential for
+   `client_credentials` at `/oauth/token`.
