@@ -6,6 +6,8 @@ This file provides guidance to Claude Code when working with this repository.
 
 API platform designed as a first-class experience for both human developers and AI agents.  Core philosophy: simplicity, zero-config defaults, actionable errors, agent-first docs.
 
+The phased plan for evolving this repo (toolkit extraction, MCP surface, delegation, human-in-the-loop) lives in `ROADMAP.md`. Any change that touches routes must update `specs/openapi/platform-api.yaml` and pass Spectral in the same change.
+
 ## Design Principles
 
 Before implementing any feature, ask these questions:
@@ -18,33 +20,49 @@ Before implementing any feature, ask these questions:
 
 These principles prioritize: **Simplicity** over flexibility · **Clarity** over comprehensiveness · **Defaults** over configuration · **User value** over technical sophistication.
 
+## Repo Layout (npm workspaces, Phase 1)
+
+```
+packages/agent-errors/     # error envelope + ErrorBuilder + Express errorHandler + Spectral ruleset
+packages/agent-dry-run/    # dryRunMiddleware + withDryRun
+packages/agent-metrics/    # agent detection, metrics store, zero-shot tracking (onZeroShotRate)
+apps/reference/            # the platform server, consuming the packages
+```
+
+Run npm scripts from the repo root — they delegate into workspaces. The app
+modules that were extracted remain as one-line re-export shims (e.g.
+`apps/reference/src/types/errors.ts`) so internal imports stay stable.
+
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/server.ts` | Main server; middleware stack order documented here |
-| `src/db/database.ts` | SQLite singleton (Drizzle ORM); schema for users/agents/tasks |
-| `src/db/task-store.ts` | DB-backed task CRUD (synchronous, better-sqlite3) |
-| `src/auth/user-store.ts` | User CRUD + password hashing |
-| `src/auth/agent-store.ts` | Agent CRUD + API key management |
-| `src/auth/jwt-utils.ts` | JWT access/refresh token generation + verification |
-| `src/middleware/ownership.ts` | Simple ownership check: `requireOwnerOrAdmin(type, loader)` |
-| `src/middleware/authorization.ts` | RBAC: `requireRole`, `requireAdmin`, `requireAdminOrDeveloper` |
-| `src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
-| `src/observability/metrics-store.ts` | In-memory metrics + `trackAgentCall()` for zero-shot rate |
-| `src/monitoring/prometheus-exporter.ts` | Prometheus gauges/counters including `agent_zero_shot_success_rate` |
-| `specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec (30+ endpoints) |
-| `specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec (17 channels, Redis+HTTP bindings) |
-| `.spectral.yaml` | 18 custom Spectral rules; every error response MUST have `suggestion` field |
+| `apps/reference/src/server.ts` | Main server; middleware stack order documented here |
+| `apps/reference/src/db/database.ts` | SQLite singleton (Drizzle ORM); schema for users/agents/tasks |
+| `apps/reference/src/db/task-store.ts` | DB-backed task CRUD (synchronous, better-sqlite3) |
+| `apps/reference/src/auth/user-store.ts` | User CRUD + password hashing + bootstrap seeding |
+| `apps/reference/src/auth/agent-store.ts` | Agent CRUD + API key management |
+| `apps/reference/src/middleware/ownership.ts` | Simple ownership check: `requireOwnerOrAdmin(type, loader)` |
+| `apps/reference/src/middleware/authorization.ts` | RBAC: `requireRole`, `requireAdmin`, `requireAdminOrDeveloper` |
+| `apps/reference/src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
+| `packages/agent-metrics/src/metrics-store.ts` | In-memory metrics + `trackAgentCall()` + `onZeroShotRate()` |
+| `apps/reference/src/monitoring/prometheus-exporter.ts` | Prometheus gauges incl. `agent_zero_shot_success_rate` (subscribes to agent-metrics) |
+| `apps/reference/src/tools/mcp-converter.ts` | OpenAPI → MCP tool generator (annotations, dry_run mapping) |
+| `apps/reference/src/mcp/` | MCP server at `/mcp` (streamable HTTP) + tool catalog + `/.well-known/mcp.json` + `/llms.txt` |
+| `apps/reference/specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec — also the source of truth for MCP tools |
+| `apps/reference/specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec (17 channels, Redis+HTTP bindings) |
+| `packages/agent-errors/spectral.yaml` | 18 custom Spectral rules; every error response MUST have `suggestion` (app's `.spectral.yaml` extends it) |
 
 ## Architecture
 
-- **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
+- **Monorepo**: npm workspaces; three publishable packages (`@standonai/agent-errors`, `@standonai/agent-dry-run`, `@standonai/agent-metrics`) + the private reference app. Package `prepare` scripts build `dist/` on install; vitest aliases resolve packages to source.
+- **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db` relative to `apps/reference`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
 - **Rate limiting**: Redis sliding window (100 human / 500 agent req/min), in-memory fallback.
 - **Auth**: JWT (1h access, 7d refresh) + agent API keys (SHA-256 hashed).
-- **Secrets**: Multi-provider (Vault/AWS/Azure/env), auto-rotation.
+- **Secrets**: Environment-variable provider built in; external managers (Vault/AWS/Azure) by implementing the `SecretsProvider` interface in `src/secrets/secrets-manager.ts`.
 - **TLS**: Handled by the reverse proxy (nginx/caddy), not in-app.
 - **Authorization**: Simple ownership check in `src/middleware/ownership.ts` replaces OWASP policy engine.
+- **MCP**: `/mcp` serves spec-generated tools over streamable HTTP (stateless). Tool calls dispatch as loopback HTTP through the full middleware stack — REST and MCP semantics are identical; auth headers are forwarded. Admin tags excluded by default (`MCP_TOOL_TAGS` overrides). `/mcp` is exempt from injection detection (dispatched calls are still checked).
 
 ## Middleware Stack (Execution Order in server.ts)
 
@@ -95,7 +113,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 105 tests passing across 13 test files, 0 failures.
+**Test coverage**: 141 tests passing across 20 test files, 0 failures.
 
 ## Environment Variables
 
@@ -109,8 +127,12 @@ npm run db:studio     # Drizzle Studio for interactive DB inspection
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `DISABLE_REDIS`
 
 **Optional — Secrets:**
-- `SECRETS_PROVIDER` (vault/aws/azure/env)
-- Provider-specific: `VAULT_ADDR`, `AWS_REGION`, `AZURE_KEY_VAULT_URL`
+- `SECRETS_PROVIDER` (only `env` is built in; any other value fails startup with a pointer to the `SecretsProvider` interface)
+
+**Optional — MCP:**
+- `MCP_TOOL_TAGS` — comma-separated spec tags to expose as MCP tools (default: all except audit/secrets/monitoring/agents/mcp)
+- `MCP_API_BASE_URL` — base URL the MCP dispatcher calls back into (default: this server)
+- `OPENAPI_SPEC_PATH` — spec file the tool catalog is generated from
 
 **Optional — Alert Delivery:**
 - `SLACK_WEBHOOK_URL` — Slack incoming webhook
@@ -131,12 +153,12 @@ npm run dev
 
 ## Production Checklist
 
-- [ ] Change default admin credentials (`admin@example.com` / `admin123`)
+- [ ] Provision the admin user (bootstrap seeding requires `ENABLE_BOOTSTRAP_SEEDING=true`, is blocked in production, and generates a one-time password unless `BOOTSTRAP_ADMIN_PASSWORD` is set)
 - [ ] Set strong `JWT_SECRET`
 - [ ] Set `DATABASE_URL` to a durable path
 - [ ] Configure TLS via reverse proxy (nginx/caddy)
 - [ ] Set up Redis for distributed rate limiting
-- [ ] Configure secrets provider (Vault/AWS/Azure)
+- [ ] Implement a custom `SecretsProvider` if you need an external secrets manager
 - [ ] Configure alert delivery (`SLACK_WEBHOOK_URL` or `PAGERDUTY_ROUTING_KEY`)
 - [ ] Enable audit log retention and rotation
 
@@ -145,6 +167,8 @@ npm run dev
 - **Kubernetes manifests** — Use Docker Compose + your own k8s tooling
 - **In-app TLS** — Use a reverse proxy instead
 - **OWASP policy engine** — `requireOwnerOrAdmin()` covers the actual use case in ~80 LOC
+- **API gateway sync (Kong/Apigee/AWS/Azure)** — Deleted in Phase 0 (~2k LOC); use your gateway's own spec-import tooling
+- **Cloud secrets providers** — Only the env provider ships; implement `SecretsProvider` for Vault/AWS/Azure
 
 ## Agent Success Metric
 

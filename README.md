@@ -10,16 +10,23 @@ A TypeScript/Express API platform for human and agent clients, with OpenAPI spec
 
 ## What You Get
 
-- JWT auth for users and API-key auth for agents
-- OpenAPI-first API definitions and linting
-- Rate limiting, security headers, and startup validation checks
-- Optional gateway/monitoring/secrets features via full profile
+- **Installable toolkit packages** (npm workspaces):
+  - [`@standonai/agent-errors`](./packages/agent-errors) — agent-parseable error envelope with mandatory `suggestion`, Express error handler, Spectral ruleset
+  - [`@standonai/agent-dry-run`](./packages/agent-dry-run) — `?dry_run=true` validation-without-execution for mutations
+  - [`@standonai/agent-metrics`](./packages/agent-metrics) — agent detection + zero-shot success rate tracking
+- A reference platform ([`apps/reference`](./apps/reference)) built on those packages:
+  - **MCP server at `/mcp`** — tools generated from the OpenAPI spec (streamable HTTP); add it to any MCP client and use the API with zero custom code
+  - Agent discovery: `/.well-known/mcp.json` + spec-derived `/llms.txt`
+  - JWT auth for users and API-key auth for agents
+  - OpenAPI-first API definitions and linting
+  - Rate limiting, security headers, and startup validation checks
+  - Optional monitoring/audit/secrets features via full profile
 - CI workflows for minimal gate and extended validation
 
 ## What This Platform Is Not
 
 - Not a complete enterprise product out of the box (SSO, compliance workflows, and org-specific controls are still your responsibility)
-- Not tied to a single cloud or gateway vendor
+- Not tied to a single cloud vendor
 - Not a replacement for your business logic, domain models, or production runbooks
 
 ## Prerequisites
@@ -32,12 +39,14 @@ A TypeScript/Express API platform for human and agent clients, with OpenAPI spec
 
 ```bash
 npm ci
-cp .env.example .env
+cp apps/reference/.env.example apps/reference/.env
 ```
+
+All npm scripts run from the repo root and delegate into the workspaces.
 
 ## Required Local Configuration
 
-Set these in `.env` before running:
+Set these in `apps/reference/.env` before running:
 
 ```env
 JWT_SECRET=<long-random-secret>
@@ -45,7 +54,7 @@ ALLOWED_ORIGINS=http://localhost:3000
 APP_PROFILE=core
 ```
 
-Use `APP_PROFILE=full` only when you need gateway/monitoring/secrets capabilities.
+Use `APP_PROFILE=full` only when you need monitoring/audit/secrets capabilities.
 
 ## Run
 
@@ -78,6 +87,17 @@ curl -X POST http://localhost:3000/api/auth/login \
 curl -X POST http://localhost:3000/api/auth/refresh \
   -H "Content-Type: application/json" \
   -d '{"refreshToken":"<paste-refresh-token>"}'
+
+# MCP: list spec-generated tools (JSON-RPC over streamable HTTP)
+curl -X POST http://localhost:3000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer <paste-access-token>" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+
+# agent discovery
+curl http://localhost:3000/.well-known/mcp.json
+curl http://localhost:3000/llms.txt
 ```
 
 ## Pre-Deployment Checks
@@ -117,13 +137,12 @@ npm run test:targeted
 npm run smoke:startup
 npm run preflight:prod-env
 npm run security:audit
-npm run gateway:status
 ```
 
 ## Profiles
 
 - `APP_PROFILE=core`: minimal API surface for most environments
-- `APP_PROFILE=full`: enables gateway sync, monitoring extras, and secrets integrations
+- `APP_PROFILE=full`: enables monitoring extras, audit logs, agent management, and secrets integrations
 
 ## Deployment Notes
 
@@ -133,11 +152,12 @@ npm run gateway:status
 
 ## Documentation
 
+- [Roadmap](./ROADMAP.md)
 - [Authentication](./AUTHENTICATION.md)
 - [Authorization](./AUTHORIZATION.md)
 - [Security](./SECURITY.md)
 - [Contributing](./CONTRIBUTING.md)
-- [OpenAPI Spec](./specs/openapi/platform-api.yaml)
+- [OpenAPI Spec](./apps/reference/specs/openapi/platform-api.yaml)
 
 ## License
 

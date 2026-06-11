@@ -1,29 +1,32 @@
 {
   "name": "human-agent-api-platform",
   "version": "0.1.0",
-  "description": "API platform designed for both human developers and AI agents",
-  "main": "dist/index.js",
+  "description": "Agent-ready API toolkit (errors, dry-run, AX metrics) plus a reference platform for human and AI-agent clients",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "packages/agent-errors",
+    "packages/agent-dry-run",
+    "packages/agent-metrics",
+    "apps/reference"
+  ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js",
-    "lint": "eslint src --ext .ts",
-    "lint:fix": "eslint src --ext .ts --fix",
-    "lint:api": "spectral lint specs/**/*.yaml",
+    "build:packages": "npm run build -w packages/agent-errors -w packages/agent-dry-run -w packages/agent-metrics",
+    "build": "npm run build:packages && npm run build -w apps/reference",
+    "dev": "npm run dev -w apps/reference",
+    "start": "npm run start -w apps/reference",
+    "lint": "eslint packages apps --ext .ts",
+    "lint:fix": "eslint packages apps --ext .ts --fix",
+    "lint:api": "spectral lint apps/reference/specs/**/*.yaml --ruleset apps/reference/.spectral.yaml",
     "test": "vitest",
-    "test:targeted": "vitest run src/auth/login-attempt-guard.test.ts src/auth/refresh-token-store.test.ts src/monitoring/startup-posture.test.ts src/middleware/https-enforcement.test.ts",
-    "smoke:startup": "bash ./scripts/smoke-startup-validation.sh",
-    "preflight:prod-env": "bash ./scripts/preflight-production-env.sh",
+    "test:targeted": "vitest run apps/reference/src/auth/login-attempt-guard.test.ts apps/reference/src/auth/refresh-token-store.test.ts apps/reference/src/monitoring/startup-posture.test.ts apps/reference/src/middleware/https-enforcement.test.ts",
+    "smoke:startup": "bash ./apps/reference/scripts/smoke-startup-validation.sh",
+    "preflight:prod-env": "bash ./apps/reference/scripts/preflight-production-env.sh",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "test:coverage": "vitest --coverage",
     "type-check": "tsc --noEmit",
-    "generate:tools": "tsx src/cli/generate-tools.ts",
-    "generate:certs": "./scripts/generate-certs.sh",
-    "gateway:sync": "tsx src/cli/sync-gateway.ts sync",
-    "gateway:status": "tsx src/cli/sync-gateway.ts status",
-    "gateway:health": "tsx src/cli/sync-gateway.ts health",
-    "db:studio": "drizzle-kit studio"
+    "generate:tools": "npm run generate:tools -w apps/reference",
+    "db:studio": "npm run db:studio -w apps/reference"
   },
   "keywords": [
     "api",
@@ -41,24 +44,6 @@
   "homepage": "https://github.com/standonai/human-agent-api-platform#readme",
   "bugs": {
     "url": "https://github.com/standonai/human-agent-api-platform/issues"
-  },
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.6.2",
-    "cors": "^2.8.6",
-    "dotenv": "^17.2.3",
-    "drizzle-orm": "^0.45.1",
-    "express": "^4.18.2",
-    "helmet": "^8.1.0",
-    "ioredis": "^5.4.1",
-    "js-yaml": "^4.1.1",
-    "jsonwebtoken": "^9.0.3",
-    "prom-client": "^15.1.3",
-    "validator": "^13.15.26",
-    "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0",
-    "xss": "^1.0.15",
-    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@stoplight/spectral-cli": "^6.11.0",
@@ -84,12 +69,6 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  },
-  "optionalDependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.1015.0",
-    "@azure/identity": "^4.5.0",
-    "@azure/keyvault-secrets": "^4.9.0",
-    "node-vault": "^0.10.2"
   },
   "overrides": {
     "minimatch@^3.0.0": "3.1.4",

@@ -31,7 +31,7 @@ This project includes:
 
 ## Production Recommendations
 
-1. Use strong, rotated secrets (`JWT_SECRET`, gateway/API credentials).
+1. Use strong, rotated secrets (`JWT_SECRET`, API credentials).
 2. Set explicit `ALLOWED_ORIGINS` and enforce HTTPS.
 3. Use durable production databases and managed Redis.
 4. Enable CI security gates (`npm run security:audit`).

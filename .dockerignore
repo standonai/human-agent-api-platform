@@ -6,3 +6,6 @@ dist
 .vscode
 .idea
 coverage
+data
+logs
+certs

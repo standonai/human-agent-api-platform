@@ -1,0 +1,60 @@
+{
+  "name": "@standonai/agent-errors",
+  "version": "0.1.0",
+  "description": "Agent-parseable API error envelope with mandatory suggestions, Express error handler, and a Spectral ruleset to enforce it",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./error-builder": {
+      "types": "./dist/error-builder.d.ts",
+      "import": "./dist/error-builder.js"
+    },
+    "./docs-url": {
+      "types": "./dist/docs-url.d.ts",
+      "import": "./dist/docs-url.js"
+    },
+    "./error-handler": {
+      "types": "./dist/error-handler.d.ts",
+      "import": "./dist/error-handler.js"
+    },
+    "./spectral.yaml": "./spectral.yaml"
+  },
+  "files": [
+    "dist",
+    "spectral.yaml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "express": "^4.18.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/standonai/human-agent-api-platform.git",
+    "directory": "packages/agent-errors"
+  },
+  "keywords": [
+    "api",
+    "errors",
+    "ai-agents",
+    "spectral",
+    "express"
+  ]
+}

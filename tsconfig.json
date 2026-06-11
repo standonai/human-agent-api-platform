@@ -1,26 +1,15 @@
 {
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
-    "lib": ["ES2022"],
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "allowJs": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "allowSyntheticDefaultImports": true
+    "noEmit": true,
+    "paths": {
+      "@standonai/agent-errors": ["./packages/agent-errors/src/index.ts"],
+      "@standonai/agent-errors/*": ["./packages/agent-errors/src/*"],
+      "@standonai/agent-dry-run": ["./packages/agent-dry-run/src/index.ts"],
+      "@standonai/agent-metrics": ["./packages/agent-metrics/src/index.ts"],
+      "@standonai/agent-metrics/*": ["./packages/agent-metrics/src/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["packages/*/src/**/*", "apps/reference/src/**/*"],
+  "exclude": ["node_modules", "**/dist"]
 }

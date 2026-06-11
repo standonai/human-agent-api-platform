@@ -11,7 +11,7 @@ build/
 *.tsbuildinfo
 
 # Generated tool definitions
-/tools/
+/apps/reference/tools/
 
 # Environment variables
 .env
