@@ -1,69 +1,37 @@
 /**
  * Secrets Management Module
  *
- * Automatically selects the appropriate secrets provider based on configuration
+ * Ships with the environment-variable provider only. External managers
+ * (Vault, AWS Secrets Manager, Azure Key Vault) are supported by
+ * implementing the SecretsProvider interface from secrets-manager.ts and
+ * passing the instance to initializeSecretsManager().
  */
 
 export * from './secrets-manager.js';
 export * from './secret-lifecycle.js';
 export * from './rotation-strategies.js';
 export * from './providers/env-provider.js';
-export * from './providers/vault-provider.js';
-export * from './providers/aws-provider.js';
-export * from './providers/azure-provider.js';
 
 import { SecretsProvider } from './secrets-manager.js';
 import { EnvironmentProvider } from './providers/env-provider.js';
-import { VaultProvider } from './providers/vault-provider.js';
-import { AWSSecretsProvider } from './providers/aws-provider.js';
-import { AzureKeyVaultProvider } from './providers/azure-provider.js';
 
 /**
- * Create secrets provider based on environment configuration
+ * Create the secrets provider from environment configuration.
  *
- * Provider selection (in order of precedence):
- * 1. SECRETS_PROVIDER env var (vault, aws, azure, env)
- * 2. Auto-detect based on provider-specific env vars
- * 3. Default to environment variables
+ * Only the environment provider is built in. If SECRETS_PROVIDER names an
+ * external manager, fail loudly instead of silently falling back.
  */
 export async function createSecretsProvider(): Promise<SecretsProvider> {
   const providerType = process.env.SECRETS_PROVIDER?.toLowerCase();
 
-  // Explicit provider selection
-  if (providerType === 'vault') {
-    return new VaultProvider();
+  if (providerType && providerType !== 'env' && providerType !== 'environment') {
+    throw new Error(
+      `SECRETS_PROVIDER='${providerType}' is not built in. ` +
+        'Implement the SecretsProvider interface (src/secrets/secrets-manager.ts) ' +
+        'and pass it to initializeSecretsManager(), or unset SECRETS_PROVIDER.'
+    );
   }
 
-  if (providerType === 'aws') {
-    return new AWSSecretsProvider();
-  }
-
-  if (providerType === 'azure') {
-    return new AzureKeyVaultProvider();
-  }
-
-  if (providerType === 'env' || providerType === 'environment') {
-    return new EnvironmentProvider();
-  }
-
-  // Auto-detect provider based on env vars
-  if (process.env.VAULT_ADDR && process.env.VAULT_TOKEN) {
-    console.log('🔍 Auto-detected: HashiCorp Vault');
-    return new VaultProvider();
-  }
-
-  if (process.env.AWS_REGION && (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI)) {
-    console.log('🔍 Auto-detected: AWS Secrets Manager');
-    return new AWSSecretsProvider();
-  }
-
-  if (process.env.AZURE_KEY_VAULT_URL || process.env.AZURE_KEY_VAULT_NAME) {
-    console.log('🔍 Auto-detected: Azure Key Vault');
-    return new AzureKeyVaultProvider();
-  }
-
-  // Default to environment variables
-  console.log('ℹ️  Using environment variables for secrets');
   return new EnvironmentProvider();
 }
 
@@ -74,13 +42,10 @@ export function logSecretsStatus(providerName: string): void {
   console.log('🔒 Secrets Management Configuration:');
 
   if (providerName === 'environment') {
-    console.log('   ⚠️  Provider: Environment Variables');
-    console.log('   ⚠️  Security: Secrets stored in .env file');
-    console.log('   💡 Tip: Use Vault/AWS/Azure for production');
+    console.log('   Provider: Environment Variables');
+    console.log('   💡 Tip: For an external manager, implement the SecretsProvider interface');
   } else {
-    console.log(`   ✅ Provider: ${providerName}`);
-    console.log('   ✅ Security: External secrets manager');
-    console.log('   ✅ Mode: Production-ready');
+    console.log(`   ✅ Provider: ${providerName} (custom)`);
   }
 }
 

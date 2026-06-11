@@ -5,6 +5,7 @@
  * so findUserByEmail, findUserById, updateLastLogin stay non-async.
  */
 
+import { randomBytes } from 'crypto';
 import { eq, sql } from 'drizzle-orm';
 import { User, UserRole, UserResponse } from '../types/auth.js';
 import { getDb, usersTable, DbUser } from '../db/database.js';
@@ -176,12 +177,18 @@ export async function initializeDefaultUsers(): Promise<void> {
   if ((countRow?.count ?? 0) > 0) return;
 
   const adminEmail = process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@example.com';
-  const adminPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD || 'admin123';
   const adminName = process.env.BOOTSTRAP_ADMIN_NAME || 'Admin User';
+  const passwordFromEnv = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+  const adminPassword = passwordFromEnv || randomBytes(12).toString('base64url');
 
   await createUser(adminEmail, adminPassword, adminName, UserRole.ADMIN);
 
-  console.log('📝 Default admin user created:');
+  console.log('📝 Bootstrap admin user created:');
   console.log(`   Email: ${adminEmail}`);
-  console.log('   ⚠️  Bootstrap password was set via env/default; rotate immediately.');
+  if (passwordFromEnv) {
+    console.log('   ⚠️  Password from BOOTSTRAP_ADMIN_PASSWORD; rotate immediately.');
+  } else {
+    console.log(`   Password: ${adminPassword}`);
+    console.log('   ⚠️  Shown once only — store it now and rotate after first login.');
+  }
 }

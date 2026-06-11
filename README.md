@@ -13,13 +13,13 @@ A TypeScript/Express API platform for human and agent clients, with OpenAPI spec
 - JWT auth for users and API-key auth for agents
 - OpenAPI-first API definitions and linting
 - Rate limiting, security headers, and startup validation checks
-- Optional gateway/monitoring/secrets features via full profile
+- Optional monitoring/audit/secrets features via full profile
 - CI workflows for minimal gate and extended validation
 
 ## What This Platform Is Not
 
 - Not a complete enterprise product out of the box (SSO, compliance workflows, and org-specific controls are still your responsibility)
-- Not tied to a single cloud or gateway vendor
+- Not tied to a single cloud vendor
 - Not a replacement for your business logic, domain models, or production runbooks
 
 ## Prerequisites
@@ -45,7 +45,7 @@ ALLOWED_ORIGINS=http://localhost:3000
 APP_PROFILE=core
 ```
 
-Use `APP_PROFILE=full` only when you need gateway/monitoring/secrets capabilities.
+Use `APP_PROFILE=full` only when you need monitoring/audit/secrets capabilities.
 
 ## Run
 
@@ -117,13 +117,12 @@ npm run test:targeted
 npm run smoke:startup
 npm run preflight:prod-env
 npm run security:audit
-npm run gateway:status
 ```
 
 ## Profiles
 
 - `APP_PROFILE=core`: minimal API surface for most environments
-- `APP_PROFILE=full`: enables gateway sync, monitoring extras, and secrets integrations
+- `APP_PROFILE=full`: enables monitoring extras, audit logs, agent management, and secrets integrations
 
 ## Deployment Notes
 
@@ -133,6 +132,7 @@ npm run gateway:status
 
 ## Documentation
 
+- [Roadmap](./ROADMAP.md)
 - [Authentication](./AUTHENTICATION.md)
 - [Authorization](./AUTHORIZATION.md)
 - [Security](./SECURITY.md)

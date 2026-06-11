@@ -47,8 +47,6 @@ tags:
     description: Audit log viewing and search (admin only)
   - name: secrets
     description: Secret lifecycle management (admin only)
-  - name: gateway
-    description: API gateway sync and status
   - name: monitoring
     description: Prometheus metrics and health checks
   - name: converter
@@ -2095,7 +2093,7 @@ paths:
                           type: integer
                         example:
                           auth-service: 3
-                          api-gateway: 2
+                          billing-service: 2
                       upcomingRotations:
                         type: array
                         items:
@@ -2382,146 +2380,6 @@ paths:
 
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
-
-  # ==========================================================================
-  # Gateway
-  # ==========================================================================
-  /api/gateway/status:
-    get:
-      operationId: getGatewayStatus
-      summary: Get gateway connection status
-      tags:
-        - gateway
-      description: |
-        Returns the health and configuration status of connected API gateways.
-
-      parameters:
-        - $ref: '#/components/parameters/API-Version'
-        - $ref: '#/components/parameters/X-Agent-ID'
-
-      responses:
-        '200':
-          description: Gateway status
-          headers:
-            X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
-            X-RateLimit-Limit:
-              $ref: '#/components/headers/X-RateLimit-Limit'
-            X-RateLimit-Remaining:
-              $ref: '#/components/headers/X-RateLimit-Remaining'
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      provider:
-                        type: string
-                        example: kong
-                      connected:
-                        type: boolean
-                        example: true
-                      lastSync:
-                        type: string
-                        format: date-time
-                  meta:
-                    type: object
-                    properties:
-                      timestamp:
-                        type: string
-                        format: date-time
-
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-        '429':
-          $ref: '#/components/responses/RateLimitExceeded'
-
-  /api/gateway/sync:
-    post:
-      operationId: syncGateway
-      summary: Sync OpenAPI spec to gateway
-      tags:
-        - gateway
-      description: |
-        Manually trigger synchronization of the OpenAPI spec to the configured gateway.
-
-      parameters:
-        - $ref: '#/components/parameters/API-Version'
-        - $ref: '#/components/parameters/X-Agent-ID'
-        - $ref: '#/components/parameters/DryRun'
-
-      responses:
-        '200':
-          description: Sync successful
-          headers:
-            X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
-            X-RateLimit-Limit:
-              $ref: '#/components/headers/X-RateLimit-Limit'
-            X-RateLimit-Remaining:
-              $ref: '#/components/headers/X-RateLimit-Remaining'
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      success:
-                        type: boolean
-                        example: true
-                      routesSynced:
-                        type: integer
-                        example: 8
-                  message:
-                    type: string
-                    example: OpenAPI spec synced successfully
-
-        '400':
-          description: Gateway not configured
-          headers:
-            X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: INVALID_PARAMETER
-                  message: Gateway is not configured
-                  details:
-                    - code: MISSING_CONFIGURATION
-                      message: No gateway provider configured
-                      suggestion: Set GATEWAY_PROVIDER environment variable to kong or apigee
-                  request_id: req_abc123
-
-        '429':
-          $ref: '#/components/responses/RateLimitExceeded'
-
-        '500':
-          description: Sync failed
-          headers:
-            X-Request-ID:
-              $ref: '#/components/headers/X-Request-ID'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error:
-                  code: INTERNAL_SERVER_ERROR
-                  message: Failed to sync OpenAPI spec
-                  details:
-                    - code: SYNC_ERROR
-                      message: Connection refused to gateway at kong:8001
-                      suggestion: Check gateway configuration and connectivity
-                  request_id: req_abc123
-
   # ==========================================================================
   # Monitoring
   # ==========================================================================

@@ -1,11 +1,9 @@
 import { isRedisHealthy } from '../config/redis-config.js';
-import { getGatewayManager } from '../gateway/index.js';
 import { getSecretsManager } from '../secrets/index.js';
 
 export interface StartupDependencyStatus {
   redis: 'pass' | 'warn' | 'fail';
   secrets: 'pass' | 'warn' | 'fail';
-  gateway: 'pass' | 'warn' | 'fail';
 }
 
 export interface StartupPostureSummary {
@@ -96,10 +94,6 @@ export async function getStartupPostureSummary(): Promise<StartupPostureSummary>
   const secretsHealthy = await secretsManager.isHealthy();
   const secretsProvider = secretsManager.getProviderName();
 
-  const gatewayManager = getGatewayManager();
-  const gatewayEnabled = gatewayManager.isEnabled();
-  const gatewayHealth = gatewayEnabled ? await gatewayManager.getHealth() : { healthy: true };
-
   const dependencies: StartupDependencyStatus = {
     redis: redisMode === 'distributed' ? 'pass' : strictDependencyReadiness ? 'fail' : 'warn',
     secrets:
@@ -108,13 +102,6 @@ export async function getStartupPostureSummary(): Promise<StartupPostureSummary>
         : strictDependencyReadiness
         ? 'fail'
         : 'warn',
-    gateway: gatewayEnabled
-      ? gatewayHealth.healthy
-        ? 'pass'
-        : strictDependencyReadiness
-        ? 'fail'
-        : 'warn'
-      : 'pass',
   };
 
   return {

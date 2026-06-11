@@ -20,9 +20,6 @@
     "type-check": "tsc --noEmit",
     "generate:tools": "tsx src/cli/generate-tools.ts",
     "generate:certs": "./scripts/generate-certs.sh",
-    "gateway:sync": "tsx src/cli/sync-gateway.ts sync",
-    "gateway:status": "tsx src/cli/sync-gateway.ts status",
-    "gateway:health": "tsx src/cli/sync-gateway.ts health",
     "db:studio": "drizzle-kit studio"
   },
   "keywords": [
@@ -44,7 +41,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.1",
@@ -84,12 +81,6 @@
   },
   "engines": {
     "node": ">=20.0.0"
-  },
-  "optionalDependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.1015.0",
-    "@azure/identity": "^4.5.0",
-    "@azure/keyvault-secrets": "^4.9.0",
-    "node-vault": "^0.10.2"
   },
   "overrides": {
     "minimatch@^3.0.0": "3.1.4",

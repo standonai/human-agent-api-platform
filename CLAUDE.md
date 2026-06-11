@@ -6,6 +6,8 @@ This file provides guidance to Claude Code when working with this repository.
 
 API platform designed as a first-class experience for both human developers and AI agents.  Core philosophy: simplicity, zero-config defaults, actionable errors, agent-first docs.
 
+The phased plan for evolving this repo (toolkit extraction, MCP surface, delegation, human-in-the-loop) lives in `ROADMAP.md`. Any change that touches routes must update `specs/openapi/platform-api.yaml` and pass Spectral in the same change.
+
 ## Design Principles
 
 Before implementing any feature, ask these questions:
@@ -42,7 +44,7 @@ These principles prioritize: **Simplicity** over flexibility · **Clarity** over
 - **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
 - **Rate limiting**: Redis sliding window (100 human / 500 agent req/min), in-memory fallback.
 - **Auth**: JWT (1h access, 7d refresh) + agent API keys (SHA-256 hashed).
-- **Secrets**: Multi-provider (Vault/AWS/Azure/env), auto-rotation.
+- **Secrets**: Environment-variable provider built in; external managers (Vault/AWS/Azure) by implementing the `SecretsProvider` interface in `src/secrets/secrets-manager.ts`.
 - **TLS**: Handled by the reverse proxy (nginx/caddy), not in-app.
 - **Authorization**: Simple ownership check in `src/middleware/ownership.ts` replaces OWASP policy engine.
 
@@ -95,7 +97,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 105 tests passing across 13 test files, 0 failures.
+**Test coverage**: 250 tests passing across 36 test files, 0 failures.
 
 ## Environment Variables
 
@@ -109,8 +111,7 @@ npm run db:studio     # Drizzle Studio for interactive DB inspection
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `DISABLE_REDIS`
 
 **Optional — Secrets:**
-- `SECRETS_PROVIDER` (vault/aws/azure/env)
-- Provider-specific: `VAULT_ADDR`, `AWS_REGION`, `AZURE_KEY_VAULT_URL`
+- `SECRETS_PROVIDER` (only `env` is built in; any other value fails startup with a pointer to the `SecretsProvider` interface)
 
 **Optional — Alert Delivery:**
 - `SLACK_WEBHOOK_URL` — Slack incoming webhook
@@ -131,12 +132,12 @@ npm run dev
 
 ## Production Checklist
 
-- [ ] Change default admin credentials (`admin@example.com` / `admin123`)
+- [ ] Provision the admin user (bootstrap seeding requires `ENABLE_BOOTSTRAP_SEEDING=true`, is blocked in production, and generates a one-time password unless `BOOTSTRAP_ADMIN_PASSWORD` is set)
 - [ ] Set strong `JWT_SECRET`
 - [ ] Set `DATABASE_URL` to a durable path
 - [ ] Configure TLS via reverse proxy (nginx/caddy)
 - [ ] Set up Redis for distributed rate limiting
-- [ ] Configure secrets provider (Vault/AWS/Azure)
+- [ ] Implement a custom `SecretsProvider` if you need an external secrets manager
 - [ ] Configure alert delivery (`SLACK_WEBHOOK_URL` or `PAGERDUTY_ROUTING_KEY`)
 - [ ] Enable audit log retention and rotation
 
@@ -145,6 +146,8 @@ npm run dev
 - **Kubernetes manifests** — Use Docker Compose + your own k8s tooling
 - **In-app TLS** — Use a reverse proxy instead
 - **OWASP policy engine** — `requireOwnerOrAdmin()` covers the actual use case in ~80 LOC
+- **API gateway sync (Kong/Apigee/AWS/Azure)** — Deleted in Phase 0 (~2k LOC); use your gateway's own spec-import tooling
+- **Cloud secrets providers** — Only the env provider ships; implement `SecretsProvider` for Vault/AWS/Azure
 
 ## Agent Success Metric
 

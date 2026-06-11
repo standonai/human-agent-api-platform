@@ -37,12 +37,6 @@ if [[ "${ENFORCE_HTTPS:-false}" == "true" && "${TRUST_PROXY:-false}" == "false" 
   errors+=("TRUST_PROXY must be configured when ENFORCE_HTTPS=true")
 fi
 
-if [[ "${APP_PROFILE:-core}" == "full" && "${FULL_PROFILE_STRICT:-false}" == "true" ]]; then
-  if [[ "${GATEWAY_PROVIDER:-none}" != "none" && "${GATEWAY_PROVIDER:-none}" != "aws" ]]; then
-    require_set "GATEWAY_ADMIN_URL"
-  fi
-fi
-
 if [[ ${#errors[@]} -gt 0 ]]; then
   echo "❌ Production preflight failed:"
   for err in "${errors[@]}"; do

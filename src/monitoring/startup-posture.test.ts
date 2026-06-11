@@ -3,8 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 let redisHealthy = false;
 let secretsHealthy = true;
 let secretsProvider = 'environment';
-let gatewayEnabled = false;
-let gatewayHealthy = false;
 
 vi.mock('../config/redis-config.js', () => ({
   isRedisHealthy: () => redisHealthy,
@@ -14,13 +12,6 @@ vi.mock('../secrets/index.js', () => ({
   getSecretsManager: () => ({
     isHealthy: async () => secretsHealthy,
     getProviderName: () => secretsProvider,
-  }),
-}));
-
-vi.mock('../gateway/index.js', () => ({
-  getGatewayManager: () => ({
-    isEnabled: () => gatewayEnabled,
-    getHealth: async () => ({ healthy: gatewayHealthy, provider: 'kong' }),
   }),
 }));
 
@@ -34,8 +25,6 @@ describe('startup-posture', () => {
     redisHealthy = false;
     secretsHealthy = true;
     secretsProvider = 'environment';
-    gatewayEnabled = false;
-    gatewayHealthy = false;
   });
 
   afterEach(() => {
@@ -51,8 +40,6 @@ describe('startup-posture', () => {
     redisHealthy = false; // fallback mode
     secretsHealthy = true;
     secretsProvider = 'environment'; // fallback provider
-    gatewayEnabled = true;
-    gatewayHealthy = false;
 
     const posture = await getStartupPostureSummary();
 
@@ -60,7 +47,6 @@ describe('startup-posture', () => {
     expect(posture.redisMode).toBe('in-memory-fallback');
     expect(posture.dependencies.redis).toBe('fail');
     expect(posture.dependencies.secrets).toBe('fail');
-    expect(posture.dependencies.gateway).toBe('fail');
   });
 
   it('marks fallback dependencies as warn outside strict full production mode', async () => {
@@ -72,7 +58,6 @@ describe('startup-posture', () => {
     redisHealthy = false;
     secretsHealthy = false;
     secretsProvider = 'environment';
-    gatewayEnabled = false;
 
     const posture = await getStartupPostureSummary();
 
@@ -80,7 +65,6 @@ describe('startup-posture', () => {
     expect(posture.redisMode).toBe('disabled');
     expect(posture.dependencies.redis).toBe('warn');
     expect(posture.dependencies.secrets).toBe('warn');
-    expect(posture.dependencies.gateway).toBe('pass');
   });
 
   it('marks all dependencies pass when distributed/healthy', async () => {
@@ -92,14 +76,11 @@ describe('startup-posture', () => {
     redisHealthy = true;
     secretsHealthy = true;
     secretsProvider = 'vault';
-    gatewayEnabled = true;
-    gatewayHealthy = true;
 
     const posture = await getStartupPostureSummary();
 
     expect(posture.redisMode).toBe('distributed');
     expect(posture.dependencies.redis).toBe('pass');
     expect(posture.dependencies.secrets).toBe('pass');
-    expect(posture.dependencies.gateway).toBe('pass');
   });
 });

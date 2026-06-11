@@ -4,13 +4,12 @@
  * Aggregates health status from all system components:
  * - Application status
  * - Database connectivity
- * - External services (Redis, Secrets Manager, Gateway)
+ * - External services (Redis, Secrets Manager)
  * - System resources
  */
 
 import { checkRedisHealth } from '../config/redis-config.js';
 import { getSecretsManager } from '../secrets/index.js';
-import { getGatewayManager } from '../gateway/index.js';
 
 export interface HealthCheckResult {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -53,9 +52,6 @@ export async function performHealthCheck(): Promise<HealthCheckResult> {
 
   // Secrets manager health
   checks.secrets = await checkSecrets();
-
-  // Gateway health
-  checks.gateway = await checkGateway();
 
   // System resources
   checks.system = await checkSystemResources();
@@ -217,67 +213,6 @@ async function checkSecrets(): Promise<ComponentHealth> {
 }
 
 /**
- * Check gateway health
- */
-async function checkGateway(): Promise<ComponentHealth> {
-  const start = Date.now();
-  const strictDependencyReadiness = isStrictFullDependencyReadinessEnabled();
-
-  try {
-    const gatewayManager = getGatewayManager();
-
-    if (!gatewayManager.isEnabled()) {
-      return {
-        status: 'pass',
-        message: 'Gateway is disabled (not required)',
-        timestamp: new Date().toISOString(),
-        duration: Date.now() - start,
-        details: {
-          enabled: false,
-        },
-      };
-    }
-
-    const gatewayHealth = await gatewayManager.getHealth();
-    if (!gatewayHealth.healthy) {
-      return {
-        status: strictDependencyReadiness ? 'fail' : 'warn',
-        message: strictDependencyReadiness
-          ? 'Gateway is unhealthy in strict full production mode'
-          : 'Gateway is unhealthy',
-        timestamp: new Date().toISOString(),
-        duration: Date.now() - start,
-        details: {
-          enabled: true,
-          provider: gatewayHealth.provider,
-        },
-      };
-    }
-
-    return {
-      status: 'pass',
-      message: 'Gateway is enabled and healthy',
-      timestamp: new Date().toISOString(),
-      duration: Date.now() - start,
-      details: {
-        enabled: true,
-        provider: gatewayHealth.provider,
-        version: gatewayHealth.version,
-      },
-    };
-  } catch (error) {
-    return {
-      status: strictDependencyReadiness ? 'fail' : 'warn',
-      message: strictDependencyReadiness
-        ? 'Gateway check failed in strict full production mode'
-        : 'Gateway check failed (optional)',
-      timestamp: new Date().toISOString(),
-      duration: Date.now() - start,
-    };
-  }
-}
-
-/**
  * Check system resources
  */
 async function checkSystemResources(): Promise<ComponentHealth> {
@@ -406,7 +341,7 @@ function determineOverallStatus(
     // Critical components that must pass
     const criticalComponents = ['application', 'memory', 'eventLoop'];
     if (strictDependencyReadiness) {
-      criticalComponents.push('redis', 'secrets', 'gateway');
+      criticalComponents.push('redis', 'secrets');
     }
 
     const criticalFailure = failedChecks.some((name) =>
@@ -446,17 +381,12 @@ export async function isReady(): Promise<boolean> {
       return true;
     }
 
-    const [redisCheck, secretsCheck, gatewayCheck] = await Promise.all([
+    const [redisCheck, secretsCheck] = await Promise.all([
       checkRedis(),
       checkSecrets(),
-      checkGateway(),
     ]);
 
-    return (
-      redisCheck.status === 'pass' &&
-      secretsCheck.status === 'pass' &&
-      gatewayCheck.status === 'pass'
-    );
+    return redisCheck.status === 'pass' && secretsCheck.status === 'pass';
   } catch (error) {
     return false;
   }

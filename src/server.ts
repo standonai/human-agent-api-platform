@@ -191,7 +191,6 @@ if (fullProfileEnabled) {
   app.use('/api/agents', lazyRoute(() => import('./api/agents-routes.js'))); // Agent management
   app.use('/api/audit', lazyRoute(() => import('./api/audit-routes.js'))); // Audit logs
   app.use('/api/secrets', lazyRoute(() => import('./api/secrets-routes.js'))); // Secret lifecycle
-  app.use('/api/gateway', lazyRoute(() => import('./api/gateway-routes.js'))); // Gateway management
   app.use('/api/monitoring', lazyRoute(() => import('./api/monitoring-routes.js'))); // Metrics & health
   if (demoRoutesEnabled) {
     app.use('/api/v2/users', lazyRoute(() => import('./api/users-routes.js'))); // Demo-only User API
@@ -250,16 +249,6 @@ function validateStartupConfig(): void {
       key: 'ALLOWED_ORIGINS',
       message: 'Must be set when strict startup validation is enabled.',
     });
-  }
-
-  if (fullProfileEnabled && strictFullProfileStartup) {
-    const gatewayProvider = (process.env.GATEWAY_PROVIDER || 'none').toLowerCase();
-    if (gatewayProvider !== 'none' && !process.env.GATEWAY_ADMIN_URL && gatewayProvider !== 'aws') {
-      issues.push({
-        key: 'GATEWAY_ADMIN_URL',
-        message: 'Required for non-AWS gateway providers in strict full mode.',
-      });
-    }
   }
 
   const requestTimeoutMs = parseInt(process.env.SERVER_REQUEST_TIMEOUT_MS || '30000', 10);
@@ -442,19 +431,6 @@ export async function startServer(): Promise<void> {
     console.log('ℹ️  Core profile: skipping full-profile dependency initialization');
   }
 
-  if (fullProfileEnabled) {
-    // Initialize gateway connection
-    const { getGatewayManager } = await import('./gateway/index.js');
-    const gatewayManager = getGatewayManager();
-    if (gatewayManager.isEnabled()) {
-      try {
-        await gatewayManager.initialize();
-      } catch {
-        console.warn('⚠️  Gateway initialization failed (continuing without gateway)');
-      }
-    }
-  }
-
   const server = http.createServer(app);
   const requestTimeoutMs = parseInt(process.env.SERVER_REQUEST_TIMEOUT_MS || '30000', 10);
   const headersTimeoutMs = parseInt(process.env.SERVER_HEADERS_TIMEOUT_MS || '35000', 10);
@@ -572,10 +548,6 @@ Core API Surface:
   GET /api/monitoring/health/startup - Startup posture (admin)
   GET /api/monitoring/health/ready - Readiness probe
   GET /api/monitoring/health/live  - Liveness probe
-
-Gateway:
-  GET  /api/gateway/status - Gateway connection status
-  POST /api/gateway/sync   - Manually sync OpenAPI spec
 
 API:
   GET    /api/v2/tasks       - List tasks

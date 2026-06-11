@@ -5,9 +5,9 @@
 
 set -e
 
-BASE_URL="http://localhost:3000"
-ADMIN_EMAIL="admin@example.com"
-ADMIN_PASS="admin123"
+BASE_URL="${BASE_URL:-http://localhost:3000}"
+ADMIN_EMAIL="${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
+ADMIN_PASS="${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD to the bootstrap admin password}"
 
 echo "🔐 Testing Fine-Grained Authorization System"
 echo "=============================================="

@@ -5,7 +5,9 @@
 
 set -e
 
-BASE_URL="http://localhost:3000"
+BASE_URL="${BASE_URL:-http://localhost:3000}"
+ADMIN_EMAIL="${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
+ADMIN_PASS="${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD to the bootstrap admin password}"
 
 echo "🔐 OWASP API1 & API3 Authorization Tests"
 echo "========================================"
@@ -23,7 +25,7 @@ info() { echo "ℹ️  INFO: $1"; }
 echo "Step 1: Authenticate as admin"
 ADMIN_LOGIN=$(curl -s -X POST "${BASE_URL}/api/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"admin123"}')
+  -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASS}\"}")
 ADMIN_TOKEN=$(echo "$ADMIN_LOGIN" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['accessToken'])")
 info "Admin authenticated"
 echo ""
