@@ -125,7 +125,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 168 tests passing across 22 test files, 0 failures.
+**Test coverage**: 166 tests passing across 23 test files, 0 failures.
 
 ## Environment Variables
 
