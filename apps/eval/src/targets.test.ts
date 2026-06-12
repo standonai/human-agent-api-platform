@@ -27,7 +27,8 @@ describe('reference target', () => {
         body: JSON.stringify({ email: ctx.email, password: ctx.password, name: 'Target Test' }),
       });
       expect(reg.status).toBe(201);
-      const token = (await reg.json()).data.accessToken;
+      const regBody = await reg.json() as { data: { accessToken: string } };
+      const token = regBody.data.accessToken;
 
       await fetch(`${target.baseUrl}/api/v2/tasks`, {
         method: 'POST',
