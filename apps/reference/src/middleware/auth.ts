@@ -20,9 +20,9 @@ import { findAgentById } from '../auth/agent-store.js';
 import { findGrantById, touchGrantUsage } from '../auth/delegation-store.js';
 import { findPendingChangeById } from '../approvals/approval-store.js';
 import { trackAgentCall } from '@standonai/agent-metrics';
-import { ErrorCode } from '../types/errors.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
 import { UserRole } from '../types/auth.js';
-import { withDocUrl } from '../utils/docs-url.js';
+import { withDocUrl } from '@standonai/agent-errors/docs-url';
 
 /**
  * Point OAuth-capable clients (e.g. MCP) at the protected-resource

@@ -6,8 +6,8 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { UserRole } from '../types/auth.js';
-import { ErrorCode } from '../types/errors.js';
-import { withDocUrl } from '../utils/docs-url.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
+import { withDocUrl } from '@standonai/agent-errors/docs-url';
 
 /**
  * Require specific role(s) to access endpoint

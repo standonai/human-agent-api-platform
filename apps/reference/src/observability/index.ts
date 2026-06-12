@@ -2,6 +2,6 @@
  * Observability exports
  */
 
-export * from './metrics-store.js';
-export * from './metrics-middleware.js';
+export * from '@standonai/agent-metrics/metrics-store';
+export * from '@standonai/agent-metrics/metrics-middleware';
 export * from './audit-logger.js';

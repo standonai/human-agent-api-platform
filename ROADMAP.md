@@ -177,6 +177,50 @@ reproducible numbers.
 
 ---
 
+# Roadmap v2 — post-launch refinement
+
+Driven by a fresh pass over the design questions (2026-06-12): subtract
+before adding, prove before polishing, then make the safe path the
+shortest path.
+
+## Release A — Subtraction *(complete)*
+
+Updates to what exists; no new features.
+
+- [x] A1: Remove deprecated `X-Agent-*` header auth from data routes
+      (the credentials live on only at `/oauth/token`), fulfilling the
+      Phase 3 deprecation timeline. `X-Agent-ID` stays as an optional
+      analytics hint; `X-Agent-Key` no longer authenticates data calls.
+- [x] A2: Delete `/api/convert`, the OpenAI/Anthropic tool-format
+      converters, and the `generate:tools` CLI — fully superseded by the
+      MCP generator (the parser and `mcp-converter` stay).
+- [x] A3: Delete the demo `users-routes`, the `validation/` module that
+      exists only to serve it, and the `ENABLE_DEMO_ROUTES` flag.
+- [x] A4: Collapse the Phase-1 re-export shims — app files import
+      `@standonai/*` directly.
+- [x] A5: Config diet — drop the fictional version-deprecation map and
+      hardcoded premium rate tiers; prune unused env vars.
+
+## Release B — Proof
+
+- [ ] B1: First live AX eval run + results table in the README
+      (needs `ANTHROPIC_API_KEY`; ~$0.50 of Haiku usage).
+- [ ] B2: npm publish via changesets (owner decision on the final scope
+      name) — or soften the README's "installable" wording until then.
+
+## Release C — Magic *(net new)*
+
+- [ ] C1: `npm run demo` — a 60-second self-narrating story: agent
+      registers → human grants → agent works → proposes a destructive
+      change → human approves → grant revoked → agent locked out.
+- [ ] C2: Dashboard "Connect an agent" flow — one click emits the agent
+      registration, grant, and a paste-ready `claude mcp add` setup.
+- [ ] C3: `@standonai/agent-ready` — `agentReady(app, { spec })`: one
+      call that wires envelope, dry-run, metrics, `llms.txt`, and `/mcp`
+      onto any Express app. The flagship adoption path.
+
+---
+
 ## Sequencing notes and risks
 
 - Phases 0–1 are mechanical; do not merge them into later feature work.

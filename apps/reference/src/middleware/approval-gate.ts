@@ -15,8 +15,8 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { createPendingChange } from '../approvals/approval-store.js';
-import { ErrorCode } from '../types/errors.js';
-import { withDocUrl } from '../utils/docs-url.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
+import { withDocUrl } from '@standonai/agent-errors/docs-url';
 
 export const REQUIRE_APPROVAL_PARAM = 'require_approval';
 

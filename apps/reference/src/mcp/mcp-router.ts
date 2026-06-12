@@ -13,7 +13,7 @@ import { Router, Request, Response } from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { ErrorCode } from '../types/errors.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
 import { ToolCatalog, getToolCatalog } from './tool-catalog.js';
 import { ApiExecutor, buildApiCall, pickForwardedHeaders } from './executor.js';
 

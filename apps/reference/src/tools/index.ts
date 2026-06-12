@@ -1,10 +1,8 @@
 /**
- * Tool definition converter exports
+ * OpenAPI → tool generation (MCP is the one tool surface)
  */
 
 export * from './openapi-parser.js';
-export * from './openai-converter.js';
-export * from './anthropic-converter.js';
 export * from './mcp-converter.js';
 
-export { GenericToolDefinition, OpenAITool, AnthropicTool } from '../types/tool-definitions.js';
+export { GenericToolDefinition } from '../types/tool-definitions.js';

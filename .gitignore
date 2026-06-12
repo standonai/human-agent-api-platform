@@ -10,9 +10,6 @@ dist/
 build/
 *.tsbuildinfo
 
-# Generated tool definitions
-/apps/reference/tools/
-
 # Environment variables
 .env
 .env.local

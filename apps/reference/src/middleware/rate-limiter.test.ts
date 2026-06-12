@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 import { rateLimit, resetRateLimits } from './rate-limiter.js';
-import { ApiError } from './error-handler.js';
+import { ApiError } from '@standonai/agent-errors/error-handler';
 
 // Mock request helper
 function createRequest(overrides?: Partial<Request>): Request {

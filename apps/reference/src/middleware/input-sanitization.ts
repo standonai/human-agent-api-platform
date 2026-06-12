@@ -12,8 +12,8 @@
 import { Request, Response, NextFunction } from 'express';
 import xss from 'xss';
 import validator from 'validator';
-import { ErrorCode } from '../types/errors.js';
-import { withDocUrl } from '../utils/docs-url.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
+import { withDocUrl } from '@standonai/agent-errors/docs-url';
 
 /**
  * XSS Options - Allow safe HTML for specific use cases
@@ -227,10 +227,9 @@ export function sanitizeInput(req: Request, res: Response, next: NextFunction): 
  * Detects and blocks common injection attacks
  */
 export function detectInjectionAttacks(req: Request, res: Response, next: NextFunction): void {
-  // Exempt endpoints that legitimately accept arbitrary structured data
-  // (OpenAPI specs, MCP JSON-RPC). MCP tool calls are re-checked when they
-  // are dispatched to the real endpoint through the loopback executor.
-  if (req.path.startsWith('/api/convert') || req.path === '/mcp') {
+  // Exempt the MCP JSON-RPC endpoint (tool args legitimately contain
+  // SQL-like text); dispatched calls are re-checked at the real endpoint.
+  if (req.path === '/mcp') {
     next();
     return;
   }

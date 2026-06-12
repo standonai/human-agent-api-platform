@@ -9,8 +9,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { ApiError } from './error-handler.js';
-import { ErrorCode } from '../types/errors.js';
+import { ApiError } from '@standonai/agent-errors/error-handler';
+import { ErrorCode } from '@standonai/agent-errors/errors';
 import { getRedisRateLimiter } from './rate-limiter-redis.js';
 
 /**

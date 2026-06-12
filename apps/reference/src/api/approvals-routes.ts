@@ -26,8 +26,8 @@ import {
 import { emitApprovalResolved, onApprovalResolved } from '../approvals/events.js';
 import { generateApprovalExecToken } from '../auth/jwt-utils.js';
 import { ApiExecutor } from '../mcp/executor.js';
-import { ErrorCode } from '../types/errors.js';
-import { withDocUrl } from '../utils/docs-url.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
+import { withDocUrl } from '@standonai/agent-errors/docs-url';
 
 export interface ApprovalsRouterOptions {
   executor: ApiExecutor;
