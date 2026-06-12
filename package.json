@@ -26,7 +26,6 @@
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "test:coverage": "vitest --coverage",
     "type-check": "tsc --noEmit",
-    "generate:tools": "npm run generate:tools -w apps/reference",
     "db:studio": "npm run db:studio -w apps/reference",
     "eval": "npm run eval -w apps/eval"
   },

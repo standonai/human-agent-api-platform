@@ -15,7 +15,7 @@ import { initializeDatabase } from '../db/database.js';
 import { initializeDefaultUsers } from '../auth/user-store.js';
 import { resetLoginAttemptGuards } from '../auth/login-attempt-guard.js';
 import authRoutes from './auth-routes.js';
-import { errorHandler } from '../middleware/error-handler.js';
+import { errorHandler } from '@standonai/agent-errors/error-handler';
 import { requestIdMiddleware } from '../middleware/request-id.js';
 
 // Minimal express app for route testing (no rate limit, no TLS)

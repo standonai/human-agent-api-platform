@@ -4,9 +4,9 @@
 
 export * from './request-id.js';
 export * from './versioning.js';
-export * from './agent-tracking.js';
-export * from './error-handler.js';
-export * from './dry-run.js';
+export * from '@standonai/agent-metrics/agent-tracking';
+export * from '@standonai/agent-errors/error-handler';
+export * from '@standonai/agent-dry-run';
 export * from './rate-limiter.js';
 export * from './cors-config.js';
 export * from './security-headers.js';

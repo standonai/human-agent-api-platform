@@ -14,7 +14,7 @@ import { createHash } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { eq, lt } from 'drizzle-orm';
 import { getDb, idempotencyKeysTable } from '../db/database.js';
-import { ErrorCode } from '../types/errors.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
 
 const KEY_TTL_MS = 24 * 60 * 60 * 1000;
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -24,11 +24,7 @@ function sha256(input: string): string {
 }
 
 function keyHashFor(req: Request, key: string): string {
-  const credentials = [
-    req.headers.authorization || '',
-    (req.headers['x-agent-id'] as string) || '',
-    (req.headers['x-agent-key'] as string) || '',
-  ].join('|');
+  const credentials = req.headers.authorization || '';
   return sha256([credentials, req.method, req.path, key].join('|'));
 }
 

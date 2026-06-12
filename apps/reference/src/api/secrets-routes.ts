@@ -9,7 +9,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/authorization.js';
 import { UserRole } from '../types/auth.js';
 import { getSecretLifecycleManager } from '../secrets/secret-lifecycle.js';
-import { asyncHandler } from '../middleware/error-handler.js';
+import { asyncHandler } from '@standonai/agent-errors/error-handler';
 
 const router = express.Router();
 

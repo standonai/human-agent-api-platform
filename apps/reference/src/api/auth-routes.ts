@@ -5,8 +5,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { ErrorCode } from '../types/errors.js';
-import { ApiError } from '../middleware/error-handler.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
+import { ApiError } from '@standonai/agent-errors/error-handler';
 import { UserRole } from '../types/auth.js';
 import {
   createUser,

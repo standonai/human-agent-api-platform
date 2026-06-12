@@ -27,7 +27,6 @@ import {
   detectInjectionAttacks,
   enforceHttpsIfConfigured,
 } from './middleware/index.js';
-import converterRoutes from './api/converter-routes.js';
 import tasksRoutes from './api/tasks-routes.js';
 import metricsRoutes from './api/metrics-routes.js';
 import authRoutes from './api/auth-routes.js';
@@ -53,7 +52,6 @@ const appProfile = rawAppProfile === 'full' ? 'full' : 'core';
 const fullProfileEnabled = appProfile === 'full';
 const strictFullProfileStartup =
   fullProfileEnabled && process.env.FULL_PROFILE_STRICT === 'true';
-const demoRoutesEnabled = process.env.ENABLE_DEMO_ROUTES === 'true';
 
 function parseTrustProxySetting(raw: string | undefined): boolean | number | string {
   if (!raw || raw.trim() === '') {
@@ -137,27 +135,12 @@ if (fullProfileEnabled) {
 app.use(sanitizeInput);           // Sanitize all string inputs (XSS prevention)
 app.use(detectInjectionAttacks);  // Detect SQL/NoSQL/command injection attempts
 
-// Configure API versioning
-const migrationGuideUrl = process.env.API_MIGRATION_GUIDE_URL;
+// Configure API versioning (single current version; add entries here when
+// a breaking change actually ships)
 const versionConfig: VersionConfig = {
   defaultVersion: '2025-01-29',
-  supportedVersions: [
-    { version: '2025-01-29' },
-    { version: '2024-12-01', deprecated: true },
-  ],
-  deprecatedVersions: migrationGuideUrl
-    ? new Map([
-        [
-          '2024-12-01',
-          {
-            deprecationDate: new Date('2024-12-01'),
-            sunsetDate: new Date('2025-06-01'),
-            migrationGuide: migrationGuideUrl,
-            replacementVersion: '2025-01-29',
-          },
-        ],
-      ])
-    : new Map(),
+  supportedVersions: [{ version: '2025-01-29' }],
+  deprecatedVersions: new Map(),
 };
 
 app.use(versioningMiddleware(versionConfig));
@@ -170,14 +153,7 @@ if (fullProfileEnabled) {
 }
 
 // Rate limiting with agent-aware defaults (100 human / 500 agent requests per minute)
-app.use(
-  rateLimit({
-    customLimits: new Map([
-      ['premium-agent', 2000],  // Premium tier
-      ['internal-tool', 5000],  // Internal services
-    ]),
-  })
-);
+app.use(rateLimit());
 
 app.use(dryRunMiddleware);
 
@@ -195,7 +171,6 @@ app.use('/api/delegations', delegationsRoutes); // Delegation grants (consent su
 app.use('/api/approvals', createApprovalsRouter({
   executor: createLoopbackExecutor(process.env.MCP_API_BASE_URL || `http://127.0.0.1:${PORT}`),
 })); // Human-in-the-loop approvals
-app.use('/api', converterRoutes);          // OpenAPI converter
 app.use('/api/v2/tasks', tasksRoutes);     // Tasks API
 app.use('/api/metrics', metricsRoutes);    // In-memory metrics aggregates (powers the dashboard)
 
@@ -218,9 +193,6 @@ if (fullProfileEnabled) {
   app.use('/api/audit', lazyRoute(() => import('./api/audit-routes.js'))); // Audit logs
   app.use('/api/secrets', lazyRoute(() => import('./api/secrets-routes.js'))); // Secret lifecycle
   app.use('/api/monitoring', lazyRoute(() => import('./api/monitoring-routes.js'))); // Metrics & health
-  if (demoRoutesEnabled) {
-    app.use('/api/v2/users', lazyRoute(() => import('./api/users-routes.js'))); // Demo-only User API
-  }
 }
 
 // Error handler (must be last)
@@ -526,7 +498,6 @@ Port: ${PORT}
 Default API Version: ${versionConfig.defaultVersion}
 Profile: ${appProfile}
 Strict Full Startup: ${strictFullProfileStartup ? 'enabled' : 'disabled'}
-Demo Routes: ${demoRoutesEnabled ? 'enabled' : 'disabled'}
 Docs URL: ${process.env.DOCS_BASE_URL || 'disabled'}
 `);
 
@@ -560,7 +531,6 @@ Core API Surface:
   GET    /api/auth/me        - Current user
   GET    /api/v2/tasks       - List tasks
   POST   /api/v2/tasks       - Create task (supports ?dry_run=true)
-  POST   /api/convert        - Convert OpenAPI to tool definitions
   POST   /oauth/token        - OAuth 2.1 tokens (client_credentials, token-exchange)
   POST   /api/delegations    - Grant an agent delegated authority
   GET    /api/approvals      - Human-in-the-loop approvals (mutations support ?require_approval=true)
@@ -581,11 +551,6 @@ Core API Surface:
 API:
   GET    /api/v2/tasks       - List tasks
   POST   /api/v2/tasks       - Create task (supports ?dry_run=true)
-  POST   /api/convert        - Convert OpenAPI to tool definitions
-${demoRoutesEnabled
-  ? `  GET    /api/v2/users       - List users (demo)
-  POST   /api/v2/users       - Create user (demo)`
-  : '  Demo routes disabled (set ENABLE_DEMO_ROUTES=true to enable /api/v2/users)'}
     `);
   });
 }

@@ -21,7 +21,7 @@ import authRoutes from './auth-routes.js';
 import oauthRoutes from './oauth-routes.js';
 import delegationsRoutes from './delegations-routes.js';
 import tasksRoutes from './tasks-routes.js';
-import { errorHandler } from '../middleware/error-handler.js';
+import { errorHandler } from '@standonai/agent-errors/error-handler';
 import { requestIdMiddleware } from '../middleware/request-id.js';
 import { createMcpRouter } from '../mcp/mcp-router.js';
 import { createLoopbackExecutor } from '../mcp/executor.js';

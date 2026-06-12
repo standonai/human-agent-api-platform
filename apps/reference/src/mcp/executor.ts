@@ -26,7 +26,7 @@ export interface ApiResult {
 export type ApiExecutor = (call: ApiCall) => Promise<ApiResult>;
 
 /** Credentials and context headers forwarded from the MCP request. */
-const FORWARDED_HEADERS = ['authorization', 'x-agent-id', 'x-agent-key', 'api-version'];
+const FORWARDED_HEADERS = ['authorization', 'x-agent-id', 'api-version'];
 
 export function pickForwardedHeaders(
   incoming: Record<string, string | string[] | undefined>

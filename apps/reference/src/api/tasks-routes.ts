@@ -1,8 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { ApiError, ErrorCode } from '../types/errors.js';
+import { ApiError, ErrorCode } from '@standonai/agent-errors/errors';
 import { optionalAuth } from '../middleware/auth.js';
 import { requireOwnerOrAdmin } from '../middleware/ownership.js';
-import { optionalAgentAuth, requireUserOrAgent } from '../middleware/agent-auth.js';
+import { requireUserOrAgent } from '../middleware/agent-auth.js';
 import { requireScope } from '../middleware/scopes.js';
 import { approvalGate } from '../middleware/approval-gate.js';
 import {
@@ -14,7 +14,7 @@ import {
 } from '../db/task-store.js';
 
 const router = Router();
-const requireTaskCaller = [optionalAuth, optionalAgentAuth, requireUserOrAgent] as const;
+const requireTaskCaller = [optionalAuth, requireUserOrAgent] as const;
 const requireTaskRead = [...requireTaskCaller, requireScope('tasks:read')] as const;
 const requireTaskWrite = [...requireTaskCaller, requireScope('tasks:write')] as const;
 

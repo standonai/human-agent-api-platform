@@ -29,9 +29,10 @@ packages/agent-metrics/    # agent detection, metrics store, zero-shot tracking 
 apps/reference/            # the platform server, consuming the packages
 ```
 
-Run npm scripts from the repo root — they delegate into workspaces. The app
-modules that were extracted remain as one-line re-export shims (e.g.
-`apps/reference/src/types/errors.ts`) so internal imports stay stable.
+Run npm scripts from the repo root — they delegate into workspaces. App
+code imports the packages directly (`@standonai/agent-errors/errors`,
+`@standonai/agent-metrics/metrics-store`, …); the Phase-1 re-export shims
+were collapsed in Release A.
 
 ## Key Files
 
@@ -66,7 +67,7 @@ modules that were extracted remain as one-line re-export shims (e.g.
 - **Monorepo**: npm workspaces; three publishable packages (`@standonai/agent-errors`, `@standonai/agent-dry-run`, `@standonai/agent-metrics`) + the private reference app. Package `prepare` scripts build `dist/` on install; vitest aliases resolve packages to source.
 - **Storage**: SQLite via Drizzle ORM (`better-sqlite3`, synchronous driver). Default: `./data/platform.db` relative to `apps/reference`; override with `DATABASE_URL`. Metrics remain in-memory (intentional — use Prometheus for long-term retention).
 - **Rate limiting**: Redis sliding window (100 human / 500 agent req/min), in-memory fallback.
-- **Auth**: JWT sessions (1h access, 7d refresh) + OAuth 2.1 token endpoint at `/oauth/token` — `client_credentials` (agent API keys, SHA-256 hashed) and RFC 8693 token exchange for **delegated tokens** (agent acting on behalf of a user). Delegated tokens are validated against the live `delegation_grants` row on every request (revocation is immediate); role never delegates (pinned to viewer). Direct `X-Agent-*` header auth on data routes is deprecated (`Deprecation` header).
+- **Auth**: JWT sessions (1h access, 7d refresh) + OAuth 2.1 token endpoint at `/oauth/token` — `client_credentials` (agent API keys, SHA-256 hashed) and RFC 8693 token exchange for **delegated tokens** (agent acting on behalf of a user). Delegated tokens are validated against the live `delegation_grants` row on every request (revocation is immediate); role never delegates (pinned to viewer). Direct `X-Agent-*` header auth on data routes was removed; the agent id/key pair authenticates only at `/oauth/token`.
 - **Scopes**: `tasks:read` / `tasks:write` / `profile:read`, enforced for delegated tokens only (`src/middleware/scopes.ts`).
 - **Secrets**: Environment-variable provider built in; external managers (Vault/AWS/Azure) by implementing the `SecretsProvider` interface in `src/secrets/secrets-manager.ts`.
 - **TLS**: Handled by the reverse proxy (nginx/caddy), not in-app.
@@ -125,7 +126,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 166 tests passing across 23 test files, 0 failures.
+**Test coverage**: 133 tests passing across 19 test files, 0 failures.
 
 ## Environment Variables
 
@@ -187,6 +188,8 @@ npm run dev
 - **OWASP policy engine** — `requireOwnerOrAdmin()` covers the actual use case in ~80 LOC
 - **API gateway sync (Kong/Apigee/AWS/Azure)** — Deleted in Phase 0 (~2k LOC); use your gateway's own spec-import tooling
 - **Cloud secrets providers** — Only the env provider ships; implement `SecretsProvider` for Vault/AWS/Azure
+- **OpenAI/Anthropic tool-format converters + `/api/convert`** — Removed in Release A; the MCP surface is the one tool story
+- **Demo users routes + validation module** — Removed in Release A; the task domain is the demo
 
 ## Agent Success Metric
 

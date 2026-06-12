@@ -6,7 +6,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { ErrorCode } from '../types/errors.js';
+import { ErrorCode } from '@standonai/agent-errors/errors';
 
 /**
  * Require that the caller is the resource owner or an admin.

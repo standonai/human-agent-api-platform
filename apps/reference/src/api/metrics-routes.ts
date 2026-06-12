@@ -5,7 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { metricsStore } from '../observability/metrics-store.js';
+import { metricsStore } from '@standonai/agent-metrics/metrics-store';
 
 const router = Router();
 

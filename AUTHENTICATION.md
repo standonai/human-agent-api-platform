@@ -6,10 +6,10 @@ This platform supports three authentication modes:
 2. Agent tokens (`POST /oauth/token`, `grant_type=client_credentials`) — agents acting as themselves
 3. Delegated tokens (`POST /oauth/token`, RFC 8693 token exchange) — agents acting **on behalf of a user** under a delegation grant
 
-Direct `X-Agent-ID`/`X-Agent-Key` header auth on data routes is **deprecated**
-(responses carry a `Deprecation` header); the same credentials are now used
-at `/oauth/token`. OAuth metadata lives at
-`/.well-known/oauth-authorization-server`.
+Direct `X-Agent-ID`/`X-Agent-Key` header auth on data routes has been
+**removed** (it was deprecated in Phase 3). The agent id/key pair is the
+credential for `POST /oauth/token` only; everything else uses bearer
+tokens. OAuth metadata lives at `/.well-known/oauth-authorization-server`.
 
 ## Agent Tokens and Delegation
 
