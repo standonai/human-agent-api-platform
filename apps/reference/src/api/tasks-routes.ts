@@ -4,6 +4,7 @@ import { optionalAuth } from '../middleware/auth.js';
 import { requireOwnerOrAdmin } from '../middleware/ownership.js';
 import { optionalAgentAuth, requireUserOrAgent } from '../middleware/agent-auth.js';
 import { requireScope } from '../middleware/scopes.js';
+import { approvalGate } from '../middleware/approval-gate.js';
 import {
   dbGetTask,
   dbListTasks,
@@ -29,6 +30,7 @@ const tasks = new Map<string, Task>();
 router.post(
   '/',
   ...requireTaskWrite,
+  approvalGate,
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { title, description, status, assignee } = req.body;
@@ -142,6 +144,7 @@ router.put(
   '/:id',
   ...requireTaskWrite,
   requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
+  approvalGate,
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;
@@ -183,6 +186,7 @@ router.delete(
   '/:id',
   ...requireTaskWrite,
   requireOwnerOrAdmin('task', (req) => dbGetTask(req.params.id)),
+  approvalGate,
   (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;

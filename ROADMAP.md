@@ -121,23 +121,35 @@ agent time-boxed write access to their tasks; the agent operates via MCP
 under that grant; the audit log shows the pair; revocation takes effect
 immediately.
 
-## Phase 4 — Human-in-the-loop + async work
+## Phase 4 — Human-in-the-loop + async work *(complete)*
 
 Collaboration, not coexistence.
 
-- **Approvals:** `?require_approval=true` on mutations → validated via the
-  dry-run path → stored in `pending_changes` → human approves/rejects (API +
-  dashboard page) → idempotent execution on approval. Policy hook so
-  operators can *require* approval for destructive ops by delegated agents.
-- **Idempotency keys:** `Idempotency-Key` header on mutations with response
-  replay. Makes agent retries safe and stops replays from polluting the
-  zero-shot metric.
-- **Async jobs:** 202 + `status_url` with SSE for completion. Implement for
-  one real operation (approval resolution) rather than abstract machinery.
-- Trim the AsyncAPI spec to what is actually implemented.
+- [x] **Approvals:** `?require_approval=true` on mutations (and a
+      `require_approval` input on every MCP mutation tool) → captured in
+      `pending_changes` after auth/scope/ownership checks → 202 with
+      status_url + SSE events_url → human approves/rejects (API +
+      dashboard panel) → approval re-dispatches the request through the
+      full stack under a single-use `approval_exec` token restoring the
+      proposer's context. `APPROVAL_POLICY=delegated-destructive` forces
+      approval for delegated DELETEs. Agents-as-themselves cannot use
+      approvals (no human owner) — the error suggests delegation.
+- [x] **Idempotency keys:** `Idempotency-Key` header on mutations with
+      stored-response replay (`Idempotency-Replayed: true`), scoped to the
+      exact credentials; replays short-circuit before route auth so they
+      never re-execute or pollute the zero-shot metric. Key reuse with a
+      different request body → 422 with a suggestion.
+- [x] **Async pattern:** 202 + `status_url`, and SSE at
+      `/api/approvals/{id}/events` — initial status on connect, terminal
+      event on resolution, stream closes. Implemented for the one real
+      operation (approval resolution), not abstract machinery.
+- [x] AsyncAPI spec trimmed from 17 aspirational channels to the one
+      implemented SSE channel.
 
-**Done when:** an agent can propose a destructive change, a human approves
-it from the dashboard, and the agent learns the outcome without polling.
+**Done when** *(verified in `approval-flow.test.ts`)*: an agent proposes a
+destructive change, a human approves it (dashboard or API), the change
+executes with the result recorded, and the agent learns the outcome via
+SSE without polling.
 
 ## Phase 5 — Prove it: the AX eval
 

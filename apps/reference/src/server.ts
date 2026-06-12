@@ -32,6 +32,8 @@ import tasksRoutes from './api/tasks-routes.js';
 import authRoutes from './api/auth-routes.js';
 import oauthRoutes from './api/oauth-routes.js';
 import delegationsRoutes from './api/delegations-routes.js';
+import { createApprovalsRouter } from './api/approvals-routes.js';
+import { idempotencyMiddleware } from './middleware/idempotency.js';
 import { createMcpRouter } from './mcp/mcp-router.js';
 import { createDiscoveryRouter } from './mcp/discovery.js';
 import { createLoopbackExecutor } from './mcp/executor.js';
@@ -178,6 +180,10 @@ app.use(
 
 app.use(dryRunMiddleware);
 
+// Idempotency-Key replay (before route auth: replays must not re-execute
+// or count against the zero-shot metric)
+app.use(idempotencyMiddleware);
+
 // Serve static files (web UI)
 app.use(express.static(join(__dirname, '../public')));
 
@@ -185,6 +191,9 @@ app.use(express.static(join(__dirname, '../public')));
 app.use('/api/auth', authRoutes);          // Authentication routes (public)
 app.use('/oauth', express.urlencoded({ extended: false }), oauthRoutes); // OAuth 2.1 token endpoint
 app.use('/api/delegations', delegationsRoutes); // Delegation grants (consent surface)
+app.use('/api/approvals', createApprovalsRouter({
+  executor: createLoopbackExecutor(process.env.MCP_API_BASE_URL || `http://127.0.0.1:${PORT}`),
+})); // Human-in-the-loop approvals
 app.use('/api', converterRoutes);          // OpenAPI converter
 app.use('/api/v2/tasks', tasksRoutes);     // Tasks API
 
@@ -552,6 +561,7 @@ Core API Surface:
   POST   /api/convert        - Convert OpenAPI to tool definitions
   POST   /oauth/token        - OAuth 2.1 tokens (client_credentials, token-exchange)
   POST   /api/delegations    - Grant an agent delegated authority
+  GET    /api/approvals      - Human-in-the-loop approvals (mutations support ?require_approval=true)
   POST   /mcp                - MCP server (streamable HTTP, spec-generated tools)
   GET    /.well-known/mcp.json - MCP discovery metadata
   GET    /llms.txt           - Agent-readable API overview

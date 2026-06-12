@@ -68,17 +68,49 @@ export const delegationGrantsTable = sqliteTable('delegation_grants', {
   lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
 });
 
+export const pendingChangesTable = sqliteTable('pending_changes', {
+  id:               text('id').primaryKey(),
+  status:           text('status').notNull().default('pending'), // pending|approved|rejected|executed|failed|expired
+  method:           text('method').notNull(),
+  path:             text('path').notNull(),
+  query:            text('query'),            // JSON object
+  body:             text('body'),             // JSON value
+  summary:          text('summary').notNull(),
+  ownerUserId:      text('owner_user_id').notNull(), // who may approve
+  proposerAgentId:  text('proposer_agent_id'),
+  proposerTokenUse: text('proposer_token_use').notNull(),
+  delegationContext: text('delegation_context'), // JSON DelegationContext
+  resultStatus:     integer('result_status'),
+  resultBody:       text('result_body'),       // JSON value
+  rejectReason:     text('reject_reason'),
+  execJti:          text('exec_jti'),
+  expiresAt:        integer('expires_at', { mode: 'timestamp' }).notNull(),
+  createdAt:        integer('created_at', { mode: 'timestamp' }).notNull(),
+  resolvedAt:       integer('resolved_at', { mode: 'timestamp' }),
+  resolvedBy:       text('resolved_by'),
+});
+
+export const idempotencyKeysTable = sqliteTable('idempotency_keys', {
+  keyHash:     text('key_hash').primaryKey(), // sha256(credentials|method|path|key)
+  requestHash: text('request_hash').notNull(),
+  statusCode:  integer('status_code').notNull(),
+  responseBody: text('response_body'),
+  createdAt:   integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
 export type DbUser  = typeof usersTable.$inferSelect;
 export type DbAgent = typeof agentsTable.$inferSelect;
 export type DbTask  = typeof tasksTable.$inferSelect;
 export type DbRefreshToken = typeof refreshTokensTable.$inferSelect;
 export type DbDelegationGrant = typeof delegationGrantsTable.$inferSelect;
+export type DbPendingChange = typeof pendingChangesTable.$inferSelect;
+export type DbIdempotencyKey = typeof idempotencyKeysTable.$inferSelect;
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
 let _db: BetterSQLite3Database | null = null;
 let _sqlite: ReturnType<typeof Database> | null = null;
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 const DEFAULT_DATABASE_PATH = './data/platform.db';
 
 interface DbMigration {
@@ -173,6 +205,49 @@ const migrations: DbMigration[] = [
 
         CREATE INDEX IF NOT EXISTS idx_delegation_grants_agent_id
           ON delegation_grants (agent_id);
+      `);
+    },
+  },
+  {
+    version: 4,
+    description: 'Pending changes (human-in-the-loop approvals) + idempotency keys',
+    up: (sqlite) => {
+      sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS pending_changes (
+          id                 TEXT PRIMARY KEY,
+          status             TEXT NOT NULL DEFAULT 'pending',
+          method             TEXT NOT NULL,
+          path               TEXT NOT NULL,
+          query              TEXT,
+          body               TEXT,
+          summary            TEXT NOT NULL,
+          owner_user_id      TEXT NOT NULL,
+          proposer_agent_id  TEXT,
+          proposer_token_use TEXT NOT NULL,
+          delegation_context TEXT,
+          result_status      INTEGER,
+          result_body        TEXT,
+          reject_reason      TEXT,
+          exec_jti           TEXT,
+          expires_at         INTEGER NOT NULL,
+          created_at         INTEGER NOT NULL,
+          resolved_at        INTEGER,
+          resolved_by        TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pending_changes_owner
+          ON pending_changes (owner_user_id, status);
+
+        CREATE TABLE IF NOT EXISTS idempotency_keys (
+          key_hash      TEXT PRIMARY KEY,
+          request_hash  TEXT NOT NULL,
+          status_code   INTEGER NOT NULL,
+          response_body TEXT,
+          created_at    INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at
+          ON idempotency_keys (created_at);
       `);
     },
   },

@@ -46,6 +46,10 @@ modules that were extracted remain as one-line re-export shims (e.g.
 | `apps/reference/src/api/oauth-routes.ts` | `/oauth/token`: client_credentials + RFC 8693 token exchange |
 | `apps/reference/src/api/delegations-routes.ts` | Grant create/list/revoke (session tokens only) |
 | `apps/reference/src/middleware/auth.ts` | Bearer auth for session/agent/delegated tokens; live grant check; `WWW-Authenticate` |
+| `apps/reference/src/approvals/approval-store.ts` | Pending changes (HITL) + execution claiming |
+| `apps/reference/src/api/approvals-routes.ts` | Approval list/status/approve/reject + SSE events |
+| `apps/reference/src/middleware/approval-gate.ts` | `?require_approval=true` capture + APPROVAL_POLICY hook |
+| `apps/reference/src/middleware/idempotency.ts` | Idempotency-Key replay (pre-auth, metric-safe) |
 | `apps/reference/src/middleware/ownership.ts` | Simple ownership check: `requireOwnerOrAdmin(type, loader)` |
 | `apps/reference/src/middleware/authorization.ts` | RBAC: `requireRole`, `requireAdmin`, `requireAdminOrDeveloper` |
 | `apps/reference/src/observability/audit-logger.ts` | Audit logging + alert delivery (Slack/PagerDuty/webhook) |
@@ -54,7 +58,7 @@ modules that were extracted remain as one-line re-export shims (e.g.
 | `apps/reference/src/tools/mcp-converter.ts` | OpenAPI → MCP tool generator (annotations, dry_run mapping) |
 | `apps/reference/src/mcp/` | MCP server at `/mcp` (streamable HTTP) + tool catalog + `/.well-known/mcp.json` + `/llms.txt` |
 | `apps/reference/specs/openapi/platform-api.yaml` | Full OpenAPI 3.1 spec — also the source of truth for MCP tools |
-| `apps/reference/specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec (17 channels, Redis+HTTP bindings) |
+| `apps/reference/specs/asyncapi/platform-events.yaml` | AsyncAPI 3.0 event spec — approval SSE channel (trimmed to implemented reality in Phase 4) |
 | `packages/agent-errors/spectral.yaml` | 18 custom Spectral rules; every error response MUST have `suggestion` (app's `.spectral.yaml` extends it) |
 
 ## Architecture
@@ -68,6 +72,8 @@ modules that were extracted remain as one-line re-export shims (e.g.
 - **TLS**: Handled by the reverse proxy (nginx/caddy), not in-app.
 - **Authorization**: Simple ownership check in `src/middleware/ownership.ts` replaces OWASP policy engine.
 - **MCP**: `/mcp` serves spec-generated tools over streamable HTTP (stateless). Tool calls dispatch as loopback HTTP through the full middleware stack — REST and MCP semantics are identical; auth headers are forwarded. Admin tags excluded by default (`MCP_TOOL_TAGS` overrides). `/mcp` is exempt from injection detection (dispatched calls are still checked).
+- **Approvals (HITL)**: mutations accept `?require_approval=true` (MCP tools get a `require_approval` input) → captured as `pending_changes`, 202 + status/events URLs. Human approves/rejects from session (API or dashboard); approval re-dispatches under a single-use `approval_exec` token restoring the proposer's context. SSE at `/api/approvals/{id}/events`. `APPROVAL_POLICY=delegated-destructive` forces approval for delegated DELETEs.
+- **Idempotency**: `Idempotency-Key` header on mutations replays stored responses (scoped to exact credentials+method+path+key); replays short-circuit before auth so they never pollute the zero-shot metric.
 
 ## Middleware Stack (Execution Order in server.ts)
 
@@ -84,6 +90,7 @@ modules that were extracted remain as one-line re-export shims (e.g.
 11. Legacy metrics middleware
 12. Rate limiting (distributed)
 13. Dry-run mode
+14. Idempotency-Key replay (pre-route-auth so replays never re-execute or skew metrics)
 
 ## Error Response Envelope
 
@@ -118,7 +125,7 @@ npm run dev           # Dev server (tsx watch, port 3000)
 npm run db:studio     # Drizzle Studio for interactive DB inspection
 ```
 
-**Test coverage**: 159 tests passing across 21 test files, 0 failures.
+**Test coverage**: 168 tests passing across 22 test files, 0 failures.
 
 ## Environment Variables
 
@@ -136,6 +143,9 @@ npm run db:studio     # Drizzle Studio for interactive DB inspection
 
 **Optional — Delegation:**
 - `DELEGATION_DEFAULT_TTL_SECONDS` (86400), `DELEGATION_MAX_TTL_SECONDS` (604800), `DELEGATED_TOKEN_TTL_SECONDS` (900)
+
+**Optional — Approvals:**
+- `APPROVAL_TTL_SECONDS` (86400), `APPROVAL_POLICY` (`none` | `delegated-destructive`)
 
 **Optional — MCP:**
 - `MCP_TOOL_TAGS` — comma-separated spec tags to expose as MCP tools (default: all except audit/secrets/monitoring/agents/mcp)

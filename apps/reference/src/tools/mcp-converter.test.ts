@@ -31,12 +31,14 @@ describe('convertToMcp', () => {
     expect(mcp.annotations.idempotentHint).toBe(true);
   });
 
-  it('adds a dry_run input to every mutation', () => {
+  it('adds dry_run and require_approval inputs to every mutation', () => {
     const mcp = convertToMcp(makeTool({ method: 'POST' }));
 
     expect(mcp.inputSchema.properties[DRY_RUN_PARAM]).toMatchObject({ type: 'boolean' });
     expect(mcp.argTargets[DRY_RUN_PARAM]).toBe('query');
     expect(mcp.description).toContain('dry_run=true');
+    expect(mcp.inputSchema.properties.require_approval).toMatchObject({ type: 'boolean' });
+    expect(mcp.argTargets.require_approval).toBe('query');
   });
 
   it('flattens path/query/body params and requires path params', () => {
@@ -54,7 +56,7 @@ describe('convertToMcp', () => {
     }));
 
     expect(Object.keys(mcp.inputSchema.properties).sort()).toEqual(
-      ['dry_run', 'id', 'note', 'title', 'verbose']
+      ['dry_run', 'id', 'note', 'require_approval', 'title', 'verbose']
     );
     expect(mcp.inputSchema.required).toContain('id');
     expect(mcp.inputSchema.required).toContain('title');
