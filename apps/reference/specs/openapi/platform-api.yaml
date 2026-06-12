@@ -57,6 +57,8 @@ tags:
     description: OAuth 2.1 token endpoint (client_credentials + RFC 8693 token exchange)
   - name: delegations
     description: Delegation grants — users granting agents scoped, revocable authority
+  - name: approvals
+    description: Human-in-the-loop approvals for captured mutations
 
 paths:
   # ==========================================================================
@@ -915,6 +917,7 @@ paths:
         - $ref: '#/components/parameters/API-Version'
         - $ref: '#/components/parameters/X-Agent-ID'
         - $ref: '#/components/parameters/DryRun'
+        - $ref: '#/components/parameters/RequireApproval'
 
       requestBody:
         required: true
@@ -1056,6 +1059,7 @@ paths:
         - $ref: '#/components/parameters/API-Version'
         - $ref: '#/components/parameters/X-Agent-ID'
         - $ref: '#/components/parameters/DryRun'
+        - $ref: '#/components/parameters/RequireApproval'
         - name: id
           in: path
           required: true
@@ -1115,6 +1119,7 @@ paths:
         - $ref: '#/components/parameters/API-Version'
         - $ref: '#/components/parameters/X-Agent-ID'
         - $ref: '#/components/parameters/DryRun'
+        - $ref: '#/components/parameters/RequireApproval'
         - name: id
           in: path
           required: true
@@ -3216,6 +3221,226 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 
+  # ==========================================================================
+  # Human-in-the-loop approvals
+  # ==========================================================================
+  /api/approvals:
+    get:
+      operationId: listApprovals
+      summary: List pending changes awaiting approval
+      tags:
+        - approvals
+      security:
+        - bearerAuth: []
+      description: Lists pending changes owned by the authenticated user (admins see all).
+      responses:
+        '200':
+          description: Approvals visible to the caller
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Approval list
+                properties:
+                  data:
+                    type: object
+                    description: Wrapper object
+                    properties:
+                      approvals:
+                        type: array
+                        description: The pending changes
+                        items:
+                          $ref: '#/components/schemas/PendingChange'
+              example:
+                data:
+                  approvals: []
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/approvals/{id}:
+    get:
+      operationId: getApproval
+      summary: Approval status
+      tags:
+        - approvals
+      security:
+        - bearerAuth: []
+      description: Returns the pending change. Visible to the owning user, the proposing agent, and admins.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Approval id
+          example: approval_1
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The pending change
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Approval wrapper
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PendingChange'
+              example:
+                data:
+                  id: approval_1
+                  status: pending
+                  summary: DELETE /api/v2/tasks/task_1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/approvals/{id}/events:
+    get:
+      operationId: streamApprovalEvents
+      summary: Stream approval resolution (SSE)
+      tags:
+        - approvals
+      security:
+        - bearerAuth: []
+      description: |
+        Server-sent events stream. Emits the current status immediately,
+        then a terminal event when the approval is resolved — agents learn
+        the outcome without polling. The stream closes after resolution.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Approval id
+          example: approval_1
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SSE stream of approval events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE frames with JSON payloads ({approval_id, status, result_status})
+              example: 'data: {"approval_id":"approval_1","status":"executed","result_status":201}'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/approvals/{id}/approve:
+    post:
+      operationId: approvePendingChange
+      summary: Approve and execute a pending change
+      tags:
+        - approvals
+      security:
+        - bearerAuth: []
+      description: |
+        Human consent (session token required). The captured request is
+        executed through the full middleware stack under a single-use
+        execution token restoring the proposer's context; the result is
+        stored on the approval and streamed to SSE subscribers.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Approval id
+          example: approval_1
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Executed (status executed/failed with the result)
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Resolved approval
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PendingChange'
+              example:
+                data:
+                  id: approval_1
+                  status: executed
+                  result_status: 204
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /api/approvals/{id}/reject:
+    post:
+      operationId: rejectPendingChange
+      summary: Reject a pending change
+      tags:
+        - approvals
+      security:
+        - bearerAuth: []
+      description: Human consent withheld (session token required). The change never executes.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Approval id
+          example: approval_1
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Optional rejection details
+              properties:
+                reason:
+                  type: string
+                  description: Why the change was rejected (shown to the proposer)
+            example:
+              reason: Not needed anymore
+      responses:
+        '200':
+          description: Rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Resolved approval
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PendingChange'
+              example:
+                data:
+                  id: approval_1
+                  status: rejected
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
 # ==============================================================================
 # Components
 # ==============================================================================
@@ -3263,6 +3488,19 @@ components:
         default: false
         example: true
 
+    RequireApproval:
+      name: require_approval
+      in: query
+      description: |
+        Capture this mutation for human approval instead of executing.
+        Responds 202 with approval_id, status_url, and an SSE events_url;
+        the change runs only after the owning user approves it.
+      required: false
+      schema:
+        type: boolean
+        default: false
+        example: true
+
   headers:
     X-Request-ID:
       description: Unique request identifier for tracing and support
@@ -3303,6 +3541,68 @@ components:
         example: 42
 
   schemas:
+    # Approval schemas
+    PendingChange:
+      type: object
+      description: A captured mutation awaiting (or resolved by) human approval
+      properties:
+        id:
+          type: string
+          description: Approval id
+          example: approval_1
+        status:
+          type: string
+          description: pending, approved, rejected, executed, failed, or expired
+          enum: [pending, approved, rejected, executed, failed, expired]
+          example: pending
+        summary:
+          type: string
+          description: Human-readable summary of the captured request
+          example: DELETE /api/v2/tasks/task_1
+        method:
+          type: string
+          description: Captured HTTP method
+          example: DELETE
+        path:
+          type: string
+          description: Captured request path
+          example: /api/v2/tasks/task_1
+        proposer_agent_id:
+          type: string
+          description: Agent that proposed the change (when delegated)
+          example: agent_1
+        proposer_token_use:
+          type: string
+          description: session or delegated
+          example: delegated
+        owner_user_id:
+          type: string
+          description: User whose consent resolves this change
+          example: user_42
+        result_status:
+          type: integer
+          description: HTTP status of the executed request (after approval)
+          example: 204
+        reject_reason:
+          type: string
+          description: Reason given on rejection
+        expires_at:
+          type: string
+          format: date-time
+          description: Pending changes expire if unresolved
+        created_at:
+          type: string
+          format: date-time
+          description: Proposal time
+        resolved_at:
+          type: string
+          format: date-time
+          description: Resolution time
+        resolved_by:
+          type: string
+          description: User who resolved it
+          example: user_42
+
     # Delegation schemas
     DelegationGrant:
       type: object

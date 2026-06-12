@@ -157,10 +157,32 @@ export function generateDelegatedToken(params: {
   });
 }
 
+/**
+ * Single-use execution token for approved pending changes: restores the
+ * proposer's principal context for exactly one dispatched request.
+ */
+export interface ApprovalExecTokenPayload {
+  token_use: 'approval_exec';
+  approval_id: string;
+  jti: string;
+  iat: number;
+  exp: number;
+}
+
+export function generateApprovalExecToken(approvalId: string, jti: string): string {
+  const payload: Omit<ApprovalExecTokenPayload, 'iat' | 'exp'> = {
+    token_use: 'approval_exec',
+    approval_id: approvalId,
+    jti,
+  };
+  return jwt.sign(payload as object, getJWTSecret(), { expiresIn: 60 });
+}
+
 export type AnyAccessTokenPayload =
   | (JWTPayload & { token_use?: undefined })
   | AgentTokenPayload
-  | DelegatedTokenPayload;
+  | DelegatedTokenPayload
+  | ApprovalExecTokenPayload;
 
 /**
  * Verify any access token (session, agent, or delegated).
@@ -184,7 +206,11 @@ export function verifyAccessToken(token: string): AnyAccessTokenPayload {
     throw new Error('INVALID_TOKEN');
   }
 
-  if (payload.token_use === 'agent' || payload.token_use === 'delegated') {
+  if (
+    payload.token_use === 'agent' ||
+    payload.token_use === 'delegated' ||
+    payload.token_use === 'approval_exec'
+  ) {
     return payload as unknown as AnyAccessTokenPayload;
   }
 

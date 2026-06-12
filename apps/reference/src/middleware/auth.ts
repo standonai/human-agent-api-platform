@@ -18,6 +18,7 @@ import { verifyAccessToken } from '../auth/jwt-utils.js';
 import { findUserById } from '../auth/user-store.js';
 import { findAgentById } from '../auth/agent-store.js';
 import { findGrantById, touchGrantUsage } from '../auth/delegation-store.js';
+import { findPendingChangeById } from '../approvals/approval-store.js';
 import { trackAgentCall } from '@standonai/agent-metrics';
 import { ErrorCode } from '../types/errors.js';
 import { UserRole } from '../types/auth.js';
@@ -94,6 +95,37 @@ function applyToken(req: Request, token: string): void {
     req.tokenUse = 'agent';
     req.agent = { id: agent.id, name: agent.name };
     bindVerifiedAgent(req, agent.id);
+    return;
+  }
+
+  if (payload.token_use === 'approval_exec') {
+    // Single-use execution of an approved pending change. The human just
+    // approved — that consent supersedes grant state, so the proposer's
+    // context is restored directly from the approval record.
+    const change = findPendingChangeById(payload.approval_id);
+    if (!change || change.status !== 'approved' || change.execJti !== payload.jti) {
+      throw new AuthError('INVALID_TOKEN');
+    }
+    const user = findUserById(change.ownerUserId);
+    if (!user) {
+      throw new AuthError('INVALID_TOKEN');
+    }
+
+    req.tokenUse = change.proposerTokenUse;
+    req.user = {
+      id: user.id,
+      email: user.email,
+      // Delegated proposals stay role-less; session proposals keep the
+      // user's real role (the human is acting on their own behalf).
+      role: change.proposerTokenUse === 'delegated' ? UserRole.VIEWER : user.role,
+    };
+    if (change.proposerAgentId) {
+      req.agent = { id: change.proposerAgentId };
+      bindVerifiedAgent(req, change.proposerAgentId);
+    }
+    if (change.delegationContext) {
+      req.delegation = change.delegationContext;
+    }
     return;
   }
 

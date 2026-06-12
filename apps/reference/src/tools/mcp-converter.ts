@@ -48,6 +48,7 @@ export interface McpToolDefinition {
 }
 
 export const DRY_RUN_PARAM = 'dry_run';
+export const REQUIRE_APPROVAL_PARAM = 'require_approval';
 
 /**
  * Convert a generic tool definition to an MCP tool.
@@ -84,6 +85,17 @@ export function convertToMcp(tool: GenericToolDefinition): McpToolDefinition {
       default: false,
     };
     argTargets[DRY_RUN_PARAM] = 'query';
+  }
+  if (isMutation && !properties[REQUIRE_APPROVAL_PARAM]) {
+    properties[REQUIRE_APPROVAL_PARAM] = {
+      type: 'boolean',
+      description:
+        'Capture this change for human approval instead of executing. ' +
+        'Returns 202 with approval_id, status_url, and an SSE events_url; ' +
+        'the change runs only after the owning user approves it.',
+      default: false,
+    };
+    argTargets[REQUIRE_APPROVAL_PARAM] = 'query';
   }
 
   let description = tool.description.trim();

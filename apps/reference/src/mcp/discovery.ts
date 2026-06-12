@@ -92,6 +92,11 @@ export function renderLlmsTxt(catalog: ToolCatalog, base: string): string {
   lines.push(`- OAuth metadata: ${base}/.well-known/oauth-authorization-server`);
   lines.push('- Errors always include a `suggestion` field — follow it to self-correct.');
   lines.push('- Mutations accept `dry_run=true` to validate without executing.');
+  lines.push('- Mutations accept `require_approval=true` to capture the change for human');
+  lines.push('  approval (202 + approval_id); stream `/api/approvals/{id}/events` (SSE) to');
+  lines.push('  learn the outcome without polling.');
+  lines.push('- Send an `Idempotency-Key` header on mutations to make retries safe; replays');
+  lines.push('  return the stored response with `Idempotency-Replayed: true`.');
   lines.push('');
 
   lines.push('## Tools');

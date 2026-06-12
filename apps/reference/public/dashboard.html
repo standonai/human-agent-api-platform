@@ -310,6 +310,21 @@
         </thead>
         <tbody></tbody>
       </table>
+
+      <div class="chart-title" style="margin-top:1.5rem;">Approvals — changes waiting for your consent</div>
+      <table id="approvalsTable">
+        <thead>
+          <tr>
+            <th>Approval</th>
+            <th>Change</th>
+            <th>Proposed By</th>
+            <th>Status</th>
+            <th>Result</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 
@@ -325,6 +340,41 @@
       document.getElementById('delegationLogin').style.display = 'none';
       document.getElementById('delegationPanel').style.display = 'block';
       loadDelegations();
+      loadApprovals();
+    }
+
+    async function loadApprovals() {
+      const res = await fetch('/api/approvals', {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+      if (!res.ok) return;
+      const body = await res.json();
+      const tbody = document.querySelector('#approvalsTable tbody');
+      tbody.innerHTML = '';
+      for (const a of body.data.approvals) {
+        const tr = document.createElement('tr');
+        const actions = a.status === 'pending'
+          ? `<button onclick="resolveApproval('${a.id}','approve')" style="background:#22c55e;color:#06281a;border:0;padding:0.25rem 0.6rem;border-radius:6px;cursor:pointer;font-weight:600;">Approve</button>
+             <button onclick="resolveApproval('${a.id}','reject')" style="background:#ef4444;color:#fff;border:0;padding:0.25rem 0.6rem;border-radius:6px;cursor:pointer;margin-left:0.3rem;">Reject</button>`
+          : '';
+        tr.innerHTML = `
+          <td>${a.id}</td>
+          <td>${a.summary}${a.body ? `<br><span style="color:#94a3b8;font-size:0.8em;">${JSON.stringify(a.body).slice(0, 80)}</span>` : ''}</td>
+          <td>${a.proposer_agent_id || 'you'}</td>
+          <td style="color:${a.status === 'pending' ? '#f59e0b' : a.status === 'executed' ? '#22c55e' : '#94a3b8'}">${a.status}</td>
+          <td>${a.result_status ?? a.reject_reason ?? '—'}</td>
+          <td>${actions}</td>`;
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function resolveApproval(id, action) {
+      await fetch(`/api/approvals/${id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: action === 'reject' ? JSON.stringify({ reason: 'Rejected from dashboard' }) : undefined,
+      });
+      loadApprovals();
     }
 
     async function delegationLogin() {
