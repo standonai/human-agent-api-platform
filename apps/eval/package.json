@@ -1,0 +1,17 @@
+{
+  "name": "@standonai/ax-eval",
+  "version": "0.1.0",
+  "description": "AX eval: drive a real agent against the reference platform vs a vanilla baseline and measure zero-shot success",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "tsx src/run-eval.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.1",
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

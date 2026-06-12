@@ -10,6 +10,6 @@
       "@standonai/agent-metrics/*": ["./packages/agent-metrics/src/*"]
     }
   },
-  "include": ["packages/*/src/**/*", "apps/reference/src/**/*"],
+  "include": ["packages/*/src/**/*", "apps/*/src/**/*"],
   "exclude": ["node_modules", "**/dist"]
 }

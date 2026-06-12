@@ -150,6 +150,14 @@ npm run security:audit
 - For private-repo release flow (without branch protection/rulesets), use:
   - [PUBLISHING_CHECKLIST.md](./PUBLISHING_CHECKLIST.md)
 
+## AX Eval
+
+`apps/eval` drives a real Claude agent against this platform and a
+deliberately vanilla baseline with the same endpoints, measuring zero-shot
+success (task completed with zero API errors en route). Run it with
+`ANTHROPIC_API_KEY=... npm run eval`; results land in
+`apps/eval/results/latest.md`. See [apps/eval/README.md](./apps/eval/README.md).
+
 ## Documentation
 
 - [Roadmap](./ROADMAP.md)
