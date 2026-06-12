@@ -75,7 +75,7 @@ export async function runAgent(params: {
   let outputTokens = 0;
   let lastText = '';
 
-  while (true) {
+  for (;;) {
     const response = await client.messages.create({
       model,
       max_tokens: 4096,
