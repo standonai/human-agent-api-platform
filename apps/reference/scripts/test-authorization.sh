@@ -7,9 +7,11 @@ set -e
 
 BASE_URL="${BASE_URL:-http://localhost:3000}"
 ADMIN_EMAIL="${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}"
-# Require the bootstrap admin password via env (no literal here — keeps
-# secret scanners from pattern-matching this assignment as a credential)
-: "${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD to the bootstrap admin password}"
+# Bootstrap admin credential comes from the environment only.
+if [ -z "${BOOTSTRAP_ADMIN_PASSWORD:-}" ]; then
+  echo "Error: BOOTSTRAP_ADMIN_PASSWORD must be set in the environment" >&2
+  exit 1
+fi
 ADMIN_PASS="$BOOTSTRAP_ADMIN_PASSWORD"
 
 echo "🔐 Testing Fine-Grained Authorization System"
