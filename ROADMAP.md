@@ -151,18 +151,25 @@ destructive change, a human approves it (dashboard or API), the change
 executes with the result recorded, and the agent learns the outcome via
 SSE without polling.
 
-## Phase 5 — Prove it: the AX eval
+## Phase 5 — Prove it: the AX eval *(harness complete; first live run pending API key)*
 
 The artifact that sells everything above.
 
-- Eval harness: drive a real agent (Claude via the API) through ~15–20 task
-  scenarios against two targets — the reference app and a deliberately
-  "vanilla" baseline (same endpoints, plain 400s, no suggestions, no
-  dry-run).
-- Measure zero-shot success rate, retries-to-success, and token cost per
-  completed task, using the Phase 3 identity-bound metrics.
-- Publish the results table in the README; run the eval in CI on a schedule
-  so the claim stays live.
+- [x] Eval harness (`apps/eval`): drives a real Claude agent (one generic
+      `http_request` tool, minimal prompt) through 8 task scenarios against
+      two targets — the reference platform (spawned subprocess) and a
+      deliberately vanilla baseline (same endpoints, plain 400s, no
+      suggestions, no dry-run, no llms.txt).
+- [x] Metrics: verified task success (independent API verifier), zero-shot
+      success (success with zero 4xx/5xx en route), error count, HTTP
+      calls, token usage. Results to `apps/eval/results/latest.{md,json}`.
+- [x] Keyless coverage: baseline DX, every scenario verifier
+      (false-before/true-after), reference subprocess spawn + llms.txt
+      assembly, report math — all in the normal test suite.
+- [x] CI: `.github/workflows/ax-eval.yml` runs weekly + on demand, gated
+      on the `ANTHROPIC_API_KEY` secret.
+- [ ] First live run + publish the results table in the README
+      (`ANTHROPIC_API_KEY=... npm run eval` — modest Haiku-tier cost).
 
 **Done when:** the README can truthfully say "agents complete tasks
 zero-shot N% more often against this platform than a baseline API," with

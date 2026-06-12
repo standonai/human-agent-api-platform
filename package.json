@@ -8,7 +8,8 @@
     "packages/agent-errors",
     "packages/agent-dry-run",
     "packages/agent-metrics",
-    "apps/reference"
+    "apps/reference",
+    "apps/eval"
   ],
   "scripts": {
     "build:packages": "npm run build -w packages/agent-errors -w packages/agent-dry-run -w packages/agent-metrics",
@@ -26,7 +27,8 @@
     "test:coverage": "vitest --coverage",
     "type-check": "tsc --noEmit",
     "generate:tools": "npm run generate:tools -w apps/reference",
-    "db:studio": "npm run db:studio -w apps/reference"
+    "db:studio": "npm run db:studio -w apps/reference",
+    "eval": "npm run eval -w apps/eval"
   },
   "keywords": [
     "api",
