@@ -29,6 +29,7 @@ import {
 } from './middleware/index.js';
 import converterRoutes from './api/converter-routes.js';
 import tasksRoutes from './api/tasks-routes.js';
+import metricsRoutes from './api/metrics-routes.js';
 import authRoutes from './api/auth-routes.js';
 import oauthRoutes from './api/oauth-routes.js';
 import delegationsRoutes from './api/delegations-routes.js';
@@ -196,6 +197,7 @@ app.use('/api/approvals', createApprovalsRouter({
 })); // Human-in-the-loop approvals
 app.use('/api', converterRoutes);          // OpenAPI converter
 app.use('/api/v2/tasks', tasksRoutes);     // Tasks API
+app.use('/api/metrics', metricsRoutes);    // In-memory metrics aggregates (powers the dashboard)
 
 // MCP surface: tools generated from the OpenAPI spec, dispatched back
 // through this server's own HTTP stack so REST and MCP stay identical.

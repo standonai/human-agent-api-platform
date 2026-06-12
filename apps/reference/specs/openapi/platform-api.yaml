@@ -2833,6 +2833,55 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimitExceeded'
 
+  /api/metrics:
+    get:
+      operationId: getMetricsSummary
+      summary: Aggregated in-memory request metrics
+      tags:
+        - monitoring
+      description: |
+        JSON aggregates from the in-memory metrics store (time series,
+        percentiles, per-endpoint and per-agent breakdowns). Powers the
+        bundled dashboard. Use Prometheus (/api/monitoring/metrics, full
+        profile) for long-term retention.
+      parameters:
+        - name: window
+          in: query
+          required: false
+          description: Aggregation window in minutes (1-1440)
+          example: 60
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1440
+            default: 60
+      responses:
+        '200':
+          description: Aggregated metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Metrics summary wrapper
+                properties:
+                  data:
+                    type: object
+                    description: Aggregated metrics (summary, timeSeries, byAgentType, byEndpoint, topAgents)
+                  meta:
+                    type: object
+                    description: Window and generation metadata
+              example:
+                data:
+                  summary:
+                    totalRequests: 1024
+                    errorRate: 0.02
+                meta:
+                  windowMinutes: 60
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
   # ==========================================================================
   # MCP (Model Context Protocol)
   # ==========================================================================

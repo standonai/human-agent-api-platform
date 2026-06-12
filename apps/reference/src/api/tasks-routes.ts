@@ -11,17 +11,12 @@ import {
   dbCreateTask,
   dbUpdateTask,
   dbDeleteTask,
-  Task,
 } from '../db/task-store.js';
 
 const router = Router();
 const requireTaskCaller = [optionalAuth, optionalAgentAuth, requireUserOrAgent] as const;
 const requireTaskRead = [...requireTaskCaller, requireScope('tasks:read')] as const;
 const requireTaskWrite = [...requireTaskCaller, requireScope('tasks:write')] as const;
-
-// Stub Map exported for backward-compat with tests that manipulate it directly.
-// Route handlers use the DB; test code operates on this Map.
-const tasks = new Map<string, Task>();
 
 /**
  * POST /api/v2/tasks
@@ -212,6 +207,4 @@ router.delete(
   }
 );
 
-// Export stub Map for backward-compat with existing tests
-export { tasks };
 export default router;

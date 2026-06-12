@@ -10,7 +10,6 @@
     "start": "node dist/server.js",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "generate:tools": "tsx src/cli/generate-tools.ts",
-    "generate:certs": "./scripts/generate-certs.sh",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
